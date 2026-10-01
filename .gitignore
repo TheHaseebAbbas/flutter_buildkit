@@ -1,0 +1,12 @@
+# Dart
+.dart_tool/
+build/
+pubspec.lock.bak
+
+# Local config and secrets: never commit these
+flutter_build_ledger.yaml
+*.service-account.json
+.env
+
+# Default output folder when run inside this repo
+builds/
