@@ -35,7 +35,7 @@ class App {
 
   Future<void> run() async {
     console
-      ..heading('Flutter Build Ledger')
+      ..heading('Flutter Buildkit')
       ..out('Project: ${project.appName} (${project.dir})')
       ..out('Ledger:  ${ledger.file.path}  (${ledger.records.length} builds)');
     while (true) {

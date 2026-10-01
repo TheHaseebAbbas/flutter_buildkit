@@ -4,7 +4,7 @@ build/
 pubspec.lock.bak
 
 # Local config and secrets: never commit these
-flutter_build_ledger.yaml
+flutter_buildkit.yaml
 *.service-account.json
 .env
 

@@ -1,17 +1,17 @@
 import 'dart:io';
 
 import 'package:args/args.dart';
-import 'package:flutter_build_ledger/flutter_build_ledger.dart';
+import 'package:flutter_buildkit/flutter_buildkit.dart';
 import 'package:path/path.dart' as p;
 
 const _usage = '''
-flutter_build_ledger: build Flutter apps and keep a ledger of the builds.
+flutter_buildkit: build Flutter apps and keep a ledger of the builds.
 
-Usage: flutter_build_ledger [options] [command]
+Usage: flutter_buildkit [options] [command]
 
 Commands:
   (none)   Open the interactive menu.
-  init     Write a starter flutter_build_ledger.yaml in the project.
+  init     Write a starter flutter_buildkit.yaml in the project.
   list     Print the ledger as a table.
   export   Write the ledger as csv, tsv or json: export <format> [file]
 
@@ -24,7 +24,7 @@ Future<int> main(List<String> arguments) async {
         abbr: 'C', help: 'Flutter project folder.', defaultsTo: '.')
     ..addOption('config',
         abbr: 'c',
-        help: 'Config file (default: <project>/flutter_build_ledger.yaml).')
+        help: 'Config file (default: <project>/flutter_buildkit.yaml).')
     ..addOption('ledger', help: 'Ledger file (overrides the config).')
     ..addFlag('help', abbr: 'h', negatable: false);
 

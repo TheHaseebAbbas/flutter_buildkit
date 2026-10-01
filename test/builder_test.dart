@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter_build_ledger/flutter_build_ledger.dart';
+import 'package:flutter_buildkit/flutter_buildkit.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 

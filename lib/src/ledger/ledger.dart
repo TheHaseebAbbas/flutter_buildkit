@@ -63,7 +63,7 @@ class Ledger {
       final version = (decoded['schemaVersion'] as num?)?.toInt() ?? 1;
       if (version > schemaVersion) {
         throw LedgerException('Ledger schema v$version is newer than this '
-            'tool supports (v$schemaVersion). Update flutter_build_ledger.');
+            'tool supports (v$schemaVersion). Update flutter_buildkit.');
       }
       builds = decoded['builds'] as List<Object?>;
     } else if (decoded is List) {

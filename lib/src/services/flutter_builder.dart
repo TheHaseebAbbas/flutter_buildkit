@@ -124,7 +124,7 @@ class FlutterBuilder {
       await _discard(outDir);
       throw BuildException('Could not start "${config.flutter.join(' ')}": '
           '${e.message}. Is Flutter on your PATH? Set "flutter:" in the config '
-          'or FBL_FLUTTER otherwise.');
+          'or FBK_FLUTTER otherwise.');
     }
     if (exitCode != 0) {
       await _discard(outDir);

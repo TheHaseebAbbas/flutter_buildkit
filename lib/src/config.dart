@@ -101,7 +101,7 @@ class SentryConfig {
   final String? url;
 }
 
-/// Settings for one Flutter project, read from `flutter_build_ledger.yaml`
+/// Settings for one Flutter project, read from `flutter_buildkit.yaml`
 /// in the project root, with secrets taken from environment variables.
 class AppConfig {
   const AppConfig({
@@ -122,10 +122,7 @@ class AppConfig {
     this.sentry = const SentryConfig(),
   });
 
-  static const fileNames = [
-    'flutter_build_ledger.yaml',
-    'flutter_build_ledger.yml'
-  ];
+  static const fileNames = ['flutter_buildkit.yaml', 'flutter_buildkit.yml'];
 
   final String projectDir;
 
@@ -219,12 +216,12 @@ class AppConfig {
       configFile: configFile,
       outputDir: y['output_dir'] as String? ?? 'app_builds',
       ledgerFile: y['ledger'] as String?,
-      flutter: _command(env['FBL_FLUTTER'] ?? y['flutter'], const ['flutter']),
+      flutter: _command(env['FBK_FLUTTER'] ?? y['flutter'], const ['flutter']),
       obfuscate: y['obfuscate'] as bool? ?? true,
       splitPerAbi: y['split_per_abi'] as bool? ?? false,
       extraBuildArgs: _stringList(y['extra_build_args']),
-      androidRetrace: env['FBL_RETRACE'] ?? androidY['retrace'] as String?,
-      androidNdkStack: env['FBL_NDK_STACK'] ?? androidY['ndk_stack'] as String?,
+      androidRetrace: env['FBK_RETRACE'] ?? androidY['retrace'] as String?,
+      androidNdkStack: env['FBK_NDK_STACK'] ?? androidY['ndk_stack'] as String?,
       preBuild: PreBuildConfig(
         clean: preY['clean'] as bool? ?? false,
         buildRunner: preY['build_runner'] as bool? ?? true,
@@ -272,14 +269,14 @@ class AppConfig {
   }
 
   static const template = '''
-# flutter_build_ledger config. Keep this file out of git if it holds secrets;
+# flutter_buildkit config. Keep this file out of git if it holds secrets;
 # prefer the environment variables noted below for credentials.
 
 # Where builds and the ledger are stored (relative to the Flutter project).
 output_dir: app_builds
 # ledger: app_builds/ledger.json
 
-# Command used to run Flutter ("fvm flutter" works too). Env: FBL_FLUTTER
+# Command used to run Flutter ("fvm flutter" works too). Env: FBK_FLUTTER
 flutter: flutter
 
 # Obfuscate release/profile builds and keep Dart symbols for crash tools.

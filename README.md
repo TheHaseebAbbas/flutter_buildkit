@@ -1,4 +1,4 @@
-# flutter_build_ledger
+# flutter_buildkit
 
 An interactive Dart console app that builds a Flutter project (APK, AAB, IPA),
 files every build in a predictable folder tree, and keeps a **ledger** of what
@@ -11,9 +11,9 @@ Add it as a dev dependency straight from GitHub, in each Flutter project's
 
 ```yaml
 dev_dependencies:
-  flutter_build_ledger:
+  flutter_buildkit:
     git:
-      url: https://github.com/TheHaseebAbbas/flutter_build_ledger.git
+      url: https://github.com/TheHaseebAbbas/flutter_buildkit.git
       # ref: v0.1.0   # pin a tag or commit when you want reproducible tooling
 ```
 
@@ -21,13 +21,13 @@ Then, from the project root:
 
 ```sh
 flutter pub get
-dart run flutter_build_ledger init   # optional: write flutter_build_ledger.yaml
-dart run flutter_build_ledger        # open the menu
+dart run flutter_buildkit init   # optional: write flutter_buildkit.yaml
+dart run flutter_buildkit        # open the menu
 ```
 
-Add `app_builds/` and `flutter_build_ledger.yaml` to that project's `.gitignore`.
+Add `app_builds/` and `flutter_buildkit.yaml` to that project's `.gitignore`.
 To work on this repo itself, clone it and run `dart pub get`, then
-`dart run bin/flutter_build_ledger.dart -C /path/to/flutter/project`.
+`dart run bin/flutter_buildkit.dart -C /path/to/flutter/project`.
 
 Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`.
 Other commands: `init` (write a starter config), `list`, `export <csv|tsv|json> [file]`.
@@ -111,14 +111,14 @@ are relative to the ledger folder, so the whole `app_builds/` folder can be move
 
 ## Configuration
 
-`dart run ... init` writes `flutter_build_ledger.yaml`. Secrets should come
+`dart run ... init` writes `flutter_buildkit.yaml`. Secrets should come
 from the environment, never from a committed file:
 
 | Variable | Purpose |
 |---|---|
 | `PLAY_SERVICE_ACCOUNT_JSON` | Path to a Google Play service account key |
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_URL` | sentry-cli |
-| `FBL_FLUTTER` | Flutter command, e.g. `fvm flutter` |
+| `FBK_FLUTTER` | Flutter command, e.g. `fvm flutter` |
 
 Crashlytics uses your `firebase login` session. The Firebase app id is read
 from `google-services.json` / `GoogleService-Info.plist` or
