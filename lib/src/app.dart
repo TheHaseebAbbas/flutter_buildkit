@@ -423,12 +423,14 @@ class App {
 
   // ---- list and details --------------------------------------------------
 
-  static String _status(BuildRecord r) => [
-        if (r.isPublished) 'published',
-        if (r.play != null) 'play:${r.play!.track}',
-        for (final t in r.symbolUploads.keys) 'sym:$t',
-        if (r.artifactsDeleted) 'files deleted',
-      ].join(' ');
+  static String _stamp(DateTime t) =>
+      t.toLocal().toIso8601String().substring(0, 16).replaceFirst('T', ' ');
+
+  String _colorStatus(BuildRecord r) => switch (r.status) {
+        BuildStatus.published => console.style.green(r.statusLabel),
+        BuildStatus.uploaded => console.style.blue(r.statusLabel),
+        BuildStatus.built => r.statusLabel,
+      };
 
   static String _when(BuildRecord r) => r.createdAt
       .toLocal()
@@ -446,6 +448,8 @@ class App {
     'Version',
     'Size',
     'Status',
+    'Files',
+    'Symbols',
   ];
 
   void _list() {
@@ -466,7 +470,9 @@ class App {
           records[i].type.name,
           records[i].version,
           records[i].artifactsDeleted ? '-' : formatBytes(records[i].totalSize),
-          _status(records[i]),
+          records[i].status.code,
+          records[i].conditionShort,
+          records[i].symbolsShort,
         ],
     ];
     final st = console.style;
@@ -481,11 +487,15 @@ class App {
                   ? st.yellow(cell)
                   : st.dim(cell);
         case 8:
-          return cell
-              .replaceAllMapped(RegExp('published'), (m) => st.green(m[0]!))
-              .replaceAllMapped(RegExp(r'play:\w+'), (m) => st.blue(m[0]!))
-              .replaceAllMapped(RegExp(r'sym:\w+'), (m) => st.magenta(m[0]!))
-              .replaceAllMapped(RegExp('files deleted'), (m) => st.dim(m[0]!));
+          return switch (cell) {
+            'published' => st.green(cell),
+            'uploaded' => st.blue(cell),
+            _ => st.dim(cell),
+          };
+        case 9:
+          return cell == 'ready' ? st.green(cell) : st.yellow(cell);
+        case 10:
+          return cell == 'missing' ? st.red(cell) : st.magenta(cell);
       }
       return cell;
     }));
@@ -494,10 +504,8 @@ class App {
   String _label(BuildRecord r) =>
       '${r.appName} ${r.flavorLabel} ${r.mode.name} ${r.type.name} ${r.version}';
 
-  String _hint(BuildRecord r) {
-    final s = _status(r);
-    return s.isEmpty ? _when(r) : '${_when(r)}  $s';
-  }
+  String _hint(BuildRecord r) =>
+      '${_when(r)}  ${r.status.code}  ${r.conditionShort}';
 
   /// Lets the user pick one build; null when cancelled or the ledger is
   /// empty.
@@ -560,6 +568,9 @@ class App {
       ..kv('Flutter', r.flutterVersion ?? '-')
       ..kv('Before build', r.preBuild.isEmpty ? '-' : r.preBuild.join(', '))
       ..kv('Obfuscated', '${r.obfuscated}')
+      ..kv('Status', _colorStatus(r))
+      ..kv('Condition', r.condition)
+      ..kv('Crash symbols', r.symbolsStatus)
       ..kv(
           'Published',
           r.publishedAt == null
@@ -585,6 +596,12 @@ class App {
           console.style.yellow('deleted ${r.artifactsDeletedAt!.toLocal()}') +
               console.style.dim(' (symbols and this entry are kept)'));
     }
+    console.out('');
+    console.out(console.style.bold('History'));
+    for (final e in r.events) {
+      console.out('  ${console.style.dim(_stamp(e.at))}  ${e.text}');
+    }
+    console.out('');
     for (final a in r.artifacts) {
       console.kv('Artifact',
           '${a.path} (${formatBytes(a.sizeBytes)})\n${' ' * 14}${console.style.dim('sha256 ${a.sha256}')}');

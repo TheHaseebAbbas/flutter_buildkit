@@ -37,6 +37,10 @@ class PlayUpload {
   final String track;
   final DateTime uploadedAt;
 
+  /// `internal, completed`, for history lines.
+  String get eventNote =>
+      '$track${releaseStatus == null ? '' : ', $releaseStatus'}';
+
   /// True when this tool uploaded it through the Play Developer API,
   /// false when it was only marked in the ledger (uploaded by hand).
   final bool viaApi;
@@ -69,6 +73,58 @@ abstract final class SymbolTargets {
   static const all = [crashlytics, sentry];
 }
 
+/// Where a build is in its life, most advanced state wins.
+enum BuildStatus {
+  /// Built and stored; not released anywhere.
+  built('built'),
+
+  /// Uploaded to Google Play but not marked published.
+  uploaded('uploaded'),
+
+  /// Marked public: released to users.
+  published('published');
+
+  const BuildStatus(this.code);
+  final String code;
+}
+
+/// Something that happened to a build, kept in [BuildRecord.events].
+class BuildEvent {
+  const BuildEvent(this.at, this.kind, [this.note]);
+
+  final DateTime at;
+
+  /// `built`, `uploaded`, `published`, `unpublished`, `symbols_uploaded` or
+  /// `artifacts_deleted`.
+  final String kind;
+  final String? note;
+
+  String get text {
+    final n = note == null ? '' : ' ($note)';
+    return switch (kind) {
+      'built' => 'built',
+      'uploaded' => 'uploaded to Google Play$n',
+      'published' => 'marked published',
+      'unpublished' => 'unmarked as published',
+      'symbols_uploaded' => 'debug symbols uploaded$n',
+      'artifacts_deleted' => 'APK/AAB/IPA files deleted; symbols kept',
+      _ => kind,
+    };
+  }
+
+  Map<String, Object?> toJson() => {
+        'at': at.toUtc().toIso8601String(),
+        'event': kind,
+        if (note != null) 'note': note,
+      };
+
+  factory BuildEvent.fromJson(Map<String, Object?> json) => BuildEvent(
+        DateTime.parse(json['at']! as String),
+        json['event']! as String,
+        json['note'] as String?,
+      );
+}
+
 /// A single row of the build ledger.
 class BuildRecord {
   const BuildRecord({
@@ -97,6 +153,7 @@ class BuildRecord {
     this.symbolUploads = const {},
     this.preBuild = const [],
     this.artifactsDeletedAt,
+    this.history = const [],
     this.notes,
   });
 
@@ -146,6 +203,10 @@ class BuildRecord {
 
   /// When the APK/AAB/IPA files were deleted (symbols are kept).
   final DateTime? artifactsDeletedAt;
+
+  /// Recorded events, oldest first. Empty for a build nothing has happened
+  /// to yet and for rows written before events existed; use [events].
+  final List<BuildEvent> history;
   final String? notes;
 
   String get flavorLabel => flavor ?? 'default';
@@ -160,6 +221,69 @@ class BuildRecord {
 
   bool get artifactsDeleted => artifactsDeletedAt != null;
 
+  /// The most advanced state: published, else uploaded to Play, else built.
+  BuildStatus get status => isPublished
+      ? BuildStatus.published
+      : (isOnPlay ? BuildStatus.uploaded : BuildStatus.built);
+
+  /// [status] in words, e.g. `published (Play internal, completed)`.
+  String get statusLabel {
+    final onPlay = play == null
+        ? ''
+        : 'Play ${play!.track}${play!.releaseStatus == null ? '' : ', ${play!.releaseStatus}'}';
+    return switch (status) {
+      BuildStatus.published =>
+        onPlay.isEmpty ? 'published' : 'published ($onPlay)',
+      BuildStatus.uploaded => 'uploaded to $onPlay',
+      BuildStatus.built => 'built, not released',
+    };
+  }
+
+  /// Whether the build's files are still there.
+  String get condition =>
+      artifactsDeleted ? 'artifacts deleted, symbols kept' : 'ready';
+
+  /// State of the debug symbols and mappings: stored on disk and uploaded
+  /// to which crash tools.
+  String get symbolsStatus {
+    final stored = symbolsDir != null || mappingFile != null;
+    if (!stored) {
+      return obfuscated ? 'missing' : 'none (not obfuscated)';
+    }
+    if (symbolUploads.isEmpty) return 'stored, not uploaded';
+    return 'uploaded to ${(symbolUploads.keys.toList()..sort()).join(', ')}';
+  }
+
+  /// Short [condition] for tables: `ready` or `files deleted`.
+  String get conditionShort => artifactsDeleted ? 'files deleted' : 'ready';
+
+  /// Short [symbolsStatus] for tables: `-`, `stored` or the tools sent to.
+  String get symbolsShort {
+    if (symbolsDir == null && mappingFile == null) {
+      return obfuscated ? 'missing' : '-';
+    }
+    if (symbolUploads.isEmpty) return 'stored';
+    return (symbolUploads.keys.toList()..sort()).join('+');
+  }
+
+  /// What happened to the build, oldest first. Rows without recorded history
+  /// get one rebuilt from their dates.
+  List<BuildEvent> get events {
+    if (history.isNotEmpty) return history;
+    return ([
+      BuildEvent(createdAt, 'built'),
+      if (play != null)
+        BuildEvent(play!.uploadedAt, 'uploaded', play!.eventNote),
+      if (publishedAt != null) BuildEvent(publishedAt!, 'published'),
+      for (final e in symbolUploads.entries)
+        BuildEvent(e.value, 'symbols_uploaded', e.key),
+      if (artifactsDeletedAt != null)
+        BuildEvent(artifactsDeletedAt!, 'artifacts_deleted'),
+    ]..sort((a, b) => a.at.compareTo(b.at)));
+  }
+
+  DateTime get lastEventAt => events.last.at;
+
   int get totalSize => artifacts.fold(0, (sum, a) => sum + a.sizeBytes);
 
   BuildRecord copyWith({
@@ -170,35 +294,52 @@ class BuildRecord {
     Map<String, DateTime>? symbolUploads,
     DateTime? artifactsDeletedAt,
     String? notes,
-  }) =>
-      BuildRecord(
-        id: id,
-        appName: appName,
-        packageName: packageName,
-        flavor: flavor,
-        mode: mode,
-        type: type,
-        versionName: versionName,
-        versionCode: versionCode,
-        createdAt: createdAt,
-        target: target,
-        entryPoint: entryPoint,
-        outputDir: outputDir,
-        artifacts: artifacts,
-        symbolsDir: symbolsDir,
-        mappingFile: mappingFile,
-        obfuscated: obfuscated,
-        gitCommit: gitCommit,
-        gitBranch: gitBranch,
-        flutterVersion: flutterVersion,
-        durationMs: durationMs,
-        publishedAt: clearPublished ? null : (publishedAt ?? this.publishedAt),
-        play: clearPlay ? null : (play ?? this.play),
-        symbolUploads: symbolUploads ?? this.symbolUploads,
-        preBuild: preBuild,
-        artifactsDeletedAt: artifactsDeletedAt ?? this.artifactsDeletedAt,
-        notes: notes ?? this.notes,
-      );
+  }) {
+    final now = DateTime.now().toUtc();
+    final added = <BuildEvent>[
+      if (clearPublished && publishedAt == null && this.publishedAt != null)
+        BuildEvent(now, 'unpublished'),
+      if (publishedAt != null && this.publishedAt == null)
+        BuildEvent(publishedAt, 'published'),
+      if (play != null) BuildEvent(play.uploadedAt, 'uploaded', play.eventNote),
+      if (symbolUploads != null)
+        for (final e in symbolUploads.entries)
+          if (!this.symbolUploads.containsKey(e.key) ||
+              this.symbolUploads[e.key] != e.value)
+            BuildEvent(e.value, 'symbols_uploaded', e.key),
+      if (artifactsDeletedAt != null && this.artifactsDeletedAt == null)
+        BuildEvent(artifactsDeletedAt, 'artifacts_deleted'),
+    ];
+    return BuildRecord(
+      id: id,
+      appName: appName,
+      packageName: packageName,
+      flavor: flavor,
+      mode: mode,
+      type: type,
+      versionName: versionName,
+      versionCode: versionCode,
+      createdAt: createdAt,
+      target: target,
+      entryPoint: entryPoint,
+      outputDir: outputDir,
+      artifacts: artifacts,
+      symbolsDir: symbolsDir,
+      mappingFile: mappingFile,
+      obfuscated: obfuscated,
+      gitCommit: gitCommit,
+      gitBranch: gitBranch,
+      flutterVersion: flutterVersion,
+      durationMs: durationMs,
+      publishedAt: clearPublished ? null : (publishedAt ?? this.publishedAt),
+      play: clearPlay ? null : (play ?? this.play),
+      symbolUploads: symbolUploads ?? this.symbolUploads,
+      preBuild: preBuild,
+      artifactsDeletedAt: artifactsDeletedAt ?? this.artifactsDeletedAt,
+      history: added.isEmpty ? history : [...events, ...added],
+      notes: notes ?? this.notes,
+    );
+  }
 
   Map<String, Object?> toJson() => {
         'id': id,
@@ -222,6 +363,10 @@ class BuildRecord {
         if (flutterVersion != null) 'flutterVersion': flutterVersion,
         if (durationMs != null) 'durationMs': durationMs,
         'status': {
+          'current': status.code,
+          'label': statusLabel,
+          'condition': condition,
+          'symbolsStatus': symbolsStatus,
           'publishedAt': publishedAt?.toUtc().toIso8601String(),
           'play': play?.toJson(),
           'symbols': {
@@ -230,6 +375,7 @@ class BuildRecord {
           },
         },
         if (preBuild.isNotEmpty) 'preBuild': preBuild,
+        'history': [for (final e in events) e.toJson()],
         if (artifactsDeletedAt != null)
           'artifactsDeletedAt': artifactsDeletedAt!.toUtc().toIso8601String(),
         if (notes != null) 'notes': notes,
@@ -278,6 +424,10 @@ class BuildRecord {
       artifactsDeletedAt: json['artifactsDeletedAt'] == null
           ? null
           : DateTime.parse(json['artifactsDeletedAt']! as String),
+      history: [
+        for (final h in (json['history'] as List?) ?? const [])
+          BuildEvent.fromJson((h as Map).cast<String, Object?>()),
+      ],
       notes: json['notes'] as String?,
     );
   }

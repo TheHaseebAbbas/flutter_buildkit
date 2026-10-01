@@ -226,6 +226,23 @@ file_name: "{app}_{flavor}_{versionName}_{versionCode}"      # artifact name, no
 Paths in the ledger are relative to the ledger folder, so the whole output
 folder can be moved. Old builds keep working after you change the layout.
 
+## Build status in the ledger
+
+Every ledger entry carries a status, a condition and a history that the app
+keeps up to date:
+
+| Field | Values |
+|---|---|
+| `status` | `built` (stored, not released), `uploaded` (on Google Play, not published), `published` (marked public). The most advanced one wins; clearing the published mark steps back. |
+| `condition` | `ready`, or `artifacts deleted, symbols kept` after the APK/AAB/IPA files were removed. |
+| `symbols_status` | `stored, not uploaded`, `uploaded to crashlytics, sentry`, `missing` (an obfuscated build without symbols) or `none (not obfuscated)`. |
+| history | what happened and when: built, uploaded to Google Play (track, release status), marked published, unmarked, debug symbols uploaded (tool), files deleted. |
+
+The list shows Status, Files and Symbols columns, the build details show the
+full history, and CSV/TSV/JSON exports carry `status`, `condition`,
+`symbols_status` and `last_event_at`. Rows written by earlier versions get
+their history rebuilt from their dates.
+
 ## Why the ledger is JSON
 
 A build row is nested (several artifacts, Play status, per-tool symbol upload
