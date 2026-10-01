@@ -1,0 +1,26 @@
+name: flutter_build_ledger
+description: >-
+  Interactive console app that builds Flutter APK/AAB/IPA files with flavors,
+  stores them in an organised folder tree, and keeps a ledger of every build
+  (publish to Google Play, upload symbols to Crashlytics and Sentry, export).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+executables:
+  flutter_build_ledger:
+  fbl: flutter_build_ledger
+
+dependencies:
+  args: ^2.6.0
+  crypto: ^3.0.6
+  googleapis: ^17.0.0
+  googleapis_auth: ^2.0.0
+  path: ^1.9.0
+  yaml: ^3.1.2
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6
