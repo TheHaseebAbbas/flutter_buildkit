@@ -79,8 +79,8 @@ void main() {
     final record = await builder.build(request);
 
     final dir = ledger.resolve(record.outputDir);
-    expect(p.split(record.outputDir),
-        containsAllInOrder(['demo', 'dev', 'release']));
+    expect(p.split(record.outputDir), containsAllInOrder(['dev', 'release']));
+    expect(p.split(record.outputDir), isNot(contains('demo')));
     final artifacts = Directory(p.join(dir, 'artifacts'))
         .listSync()
         .map((e) => p.basename(e.path))

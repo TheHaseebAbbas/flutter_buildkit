@@ -101,18 +101,17 @@ Every build gets its own folder under `app_builds/` (set with `output_dir`):
 app_builds/
   ledger.json                 the ledger (+ ledger.json.bak)
   exports/                    CSV / TSV / JSON exports
-  my_app/                     <app>
-    dev/                      <flavor>   ("default" when there are no flavors)
-      release/                <mode>
-        1.2.0-b42-20261001-070509/       <versionName>-b<versionCode>-<datetime>
-          artifacts/
-            my_app-dev-release-1.2.0-b42-20261001-070509.aab
-          symbols/
-            dart/             --split-debug-info output (obfuscated builds)
-            mapping/          R8 mapping.txt, usage.txt, seeds.txt ...
-            native/<abi>/     unstripped .so files
-            dSYMs/            iOS
-          build_info.json     this build's ledger row
+  dev/                        <flavor>   ("default" when there are no flavors)
+    release/                  <mode>
+      1.2.0-b42-20261001-070509/       <versionName>-b<versionCode>-<datetime>
+        artifacts/
+          my_app-dev-release-1.2.0-b42-20261001-070509.aab
+        symbols/
+          dart/             --split-debug-info output (obfuscated builds)
+          mapping/          R8 mapping.txt, usage.txt, seeds.txt ...
+          native/<abi>/     unstripped .so files
+          dSYMs/            iOS
+        build_info.json     this build's ledger row
 ```
 
 Artifact file names are
@@ -122,6 +121,13 @@ the flavor part is left out. Split-per-ABI APKs get the ABI at the end
 (`...-070509-arm64-v8a.apk`). `<datetime>` is local time, `yyyyMMdd-HHmmss`.
 
 ### Choosing another folder structure
+
+The `{app}/` folder of a preset only appears when `output_dir` is outside the
+Flutter project. Inside the project (the default `app_builds/`) the project
+folder already names the app, so `by-flavor` gives
+`app_builds/dev/release/1.2.0-b42-.../`. With `output_dir: ~/builds` it gives
+`~/builds/my_app/dev/release/1.2.0-b42-.../`. Custom templates are used
+exactly as written. File names always contain the app name.
 
 Set `output_layout` to a preset (or your own template). The presets, shown
 for the same build:

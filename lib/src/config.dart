@@ -163,6 +163,25 @@ class AppConfig {
   final SentryConfig sentry;
 
   String get outputRoot => _resolve(outputDir);
+
+  /// True when [outputRoot] is inside the Flutter project, where the app
+  /// name is already known from the project folder.
+  bool get outputInsideProject => p.isWithin(projectDir, outputRoot);
+
+  /// The layout actually used. A preset that starts with `{app}/` drops that
+  /// folder while the output lives inside the project (it would only repeat
+  /// the project's name) and keeps it when the output is somewhere else, so
+  /// several apps can share one folder. Custom templates are used as written.
+  String get effectiveLayout {
+    final layout = outputLayout ?? LayoutPreset.byFlavor.template;
+    final isPreset = LayoutPreset.values.any((x) => x.template == layout);
+    const prefix = '{app}/';
+    if (isPreset && layout.startsWith(prefix) && outputInsideProject) {
+      return layout.substring(prefix.length);
+    }
+    return layout;
+  }
+
   String get ledgerPath => ledgerFile == null
       ? p.join(outputRoot, 'ledger.json')
       : _resolve(ledgerFile!);
@@ -312,7 +331,7 @@ class AppConfig {
       'config file': configFile ?? '(none; defaults)',
       'project': projectDir,
       'output_dir': outputRoot,
-      'output_layout': outputLayout ?? LayoutPreset.byFlavor.template,
+      'output_layout': effectiveLayout,
       'file_name': fileName ?? BuildPaths.defaultFileName,
       'ledger': ledgerPath,
       'flutter': flutter.join(' '),
@@ -368,6 +387,8 @@ output_dir: app_builds
 #   by-version  {app}/{version}/{flavor}-{mode}-{datetime}
 #   by-month    {year}-{month}/{app}-{flavor}-{mode}-{version}-{datetime}
 #   flat        {app}-{flavor}-{mode}-{version}-{datetime}
+# A preset starting with {app}/ drops that folder while output_dir is inside
+# the project, and keeps it when output_dir points elsewhere (e.g. ~/builds).
 # Tokens: {app} {flavor} {mode} {versionName} {versionCode} {version}
 #         {datetime} {date} {time} {year} {month} {type}
 output_layout: by-flavor

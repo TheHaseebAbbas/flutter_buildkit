@@ -99,7 +99,7 @@ class FlutterBuilder {
     final started = DateTime.now();
     final appName = project.appName;
     final paths = BuildPaths(config.outputRoot,
-        layout: config.outputLayout, fileName: config.fileName);
+        layout: config.effectiveLayout, fileName: config.fileName);
     BuildNaming naming(ArtifactType type) => BuildNaming(
           appName: appName,
           flavor: request.flavor,

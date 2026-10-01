@@ -149,6 +149,19 @@ void main() {
       final c = AppConfig.fromYaml('/p', {'output_layout': 'flat'});
       expect(c.outputLayout, LayoutPreset.flat.template);
     });
+
+    test('presets drop {app}/ inside the project and keep it elsewhere', () {
+      final inside = AppConfig.fromYaml('/p', const {});
+      expect(inside.effectiveLayout, '{flavor}/{mode}/{version}-{datetime}');
+      final outside = AppConfig.fromYaml('/p', const {'output_dir': '/builds'});
+      expect(outside.effectiveLayout, LayoutPreset.byFlavor.template);
+      final custom = AppConfig.fromYaml(
+          '/p', const {'output_layout': '{app}/{flavor}-{datetime}'});
+      expect(custom.effectiveLayout, '{app}/{flavor}-{datetime}');
+      final flat = AppConfig.fromYaml('/p', const {'output_layout': 'flat'});
+      expect(flat.effectiveLayout, LayoutPreset.flat.template);
+      expect(inside.describe(), contains('{flavor}/{mode}'));
+    });
   });
 
   test('timestamp is zero padded and sorts chronologically', () {
