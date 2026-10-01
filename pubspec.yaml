@@ -1,0 +1,27 @@
+name: flutter_buildkit
+description: >-
+  Interactive console app that builds Flutter APK/AAB/IPA files with flavors,
+  stores them in an organised folder tree, and keeps a ledger of every build
+  (publish to Google Play, upload symbols to Crashlytics and Sentry, export).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+executables:
+  flutter_buildkit:
+  fbk: flutter_buildkit
+
+dependencies:
+  args: ^2.4.0
+  crypto: ^3.0.3
+  ffi: '>=2.0.0 <3.0.0'
+  googleapis: '>=13.0.0 <18.0.0'
+  googleapis_auth: '>=1.6.0 <3.0.0'
+  path: ^1.8.3
+  yaml: ^3.1.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6
