@@ -2,6 +2,7 @@ import 'build_options.dart';
 
 /// One file produced by a build (an APK per ABI, an AAB, an IPA...).
 class BuildArtifact {
+  /// Creates an artifact record.
   const BuildArtifact({
     required this.path,
     required this.sizeBytes,
@@ -10,12 +11,18 @@ class BuildArtifact {
 
   /// Path relative to the ledger's root folder.
   final String path;
+
+  /// Size of the file in bytes.
   final int sizeBytes;
+
+  /// Hex SHA-256 digest of the file; empty when unknown.
   final String sha256;
 
+  /// Returns the JSON form stored in the ledger.
   Map<String, Object?> toJson() =>
       {'path': path, 'sizeBytes': sizeBytes, 'sha256': sha256};
 
+  /// Reads an artifact from its ledger JSON; missing size and digest default to 0 and empty.
   factory BuildArtifact.fromJson(Map<String, Object?> json) => BuildArtifact(
         path: json['path']! as String,
         sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
@@ -25,6 +32,7 @@ class BuildArtifact {
 
 /// Where and how a build reached Google Play.
 class PlayUpload {
+  /// Creates a record of a Play upload.
   const PlayUpload({
     required this.track,
     required this.uploadedAt,
@@ -35,6 +43,8 @@ class PlayUpload {
 
   /// internal, alpha, beta, production or a custom closed track.
   final String track;
+
+  /// When the upload happened.
   final DateTime uploadedAt;
 
   /// `internal, completed`, for history lines.
@@ -47,8 +57,11 @@ class PlayUpload {
 
   /// draft, completed, inProgress or halted.
   final String? releaseStatus;
+
+  /// Play Developer API edit id; null when not recorded.
   final String? editId;
 
+  /// Returns the JSON form stored in the ledger.
   Map<String, Object?> toJson() => {
         'track': track,
         'uploadedAt': uploadedAt.toUtc().toIso8601String(),
@@ -57,6 +70,7 @@ class PlayUpload {
         if (editId != null) 'editId': editId,
       };
 
+  /// Reads a Play upload from its ledger JSON.
   factory PlayUpload.fromJson(Map<String, Object?> json) => PlayUpload(
         track: json['track']! as String,
         uploadedAt: DateTime.parse(json['uploadedAt']! as String),
@@ -68,8 +82,13 @@ class PlayUpload {
 
 /// Names of crash reporting tools symbols can be uploaded to.
 abstract final class SymbolTargets {
+  /// Name of Firebase Crashlytics.
   static const crashlytics = 'crashlytics';
+
+  /// Name of Sentry.
   static const sentry = 'sentry';
+
+  /// Every supported target.
   static const all = [crashlytics, sentry];
 }
 
@@ -85,20 +104,27 @@ enum BuildStatus {
   published('published');
 
   const BuildStatus(this.code);
+
+  /// Stable string stored in the ledger and exports.
   final String code;
 }
 
 /// Something that happened to a build, kept in [BuildRecord.events].
 class BuildEvent {
+  /// Creates an event at [at] of the given [kind] with an optional [note].
   const BuildEvent(this.at, this.kind, [this.note]);
 
+  /// When the event happened.
   final DateTime at;
 
   /// `built`, `uploaded`, `published`, `unpublished`, `symbols_uploaded` or
   /// `artifacts_deleted`.
   final String kind;
+
+  /// Extra detail, such as the Play track or the symbol target; may be null.
   final String? note;
 
+  /// Human readable description of the event, for history output.
   String get text {
     final n = note == null ? '' : ' ($note)';
     return switch (kind) {
@@ -112,12 +138,14 @@ class BuildEvent {
     };
   }
 
+  /// Returns the JSON form stored in the ledger.
   Map<String, Object?> toJson() => {
         'at': at.toUtc().toIso8601String(),
         'event': kind,
         if (note != null) 'note': note,
       };
 
+  /// Reads an event from its ledger JSON.
   factory BuildEvent.fromJson(Map<String, Object?> json) => BuildEvent(
         DateTime.parse(json['at']! as String),
         json['event']! as String,
@@ -127,6 +155,7 @@ class BuildEvent {
 
 /// A single row of the build ledger.
 class BuildRecord {
+  /// Creates a ledger row; only the required fields must be known at build time.
   const BuildRecord({
     required this.id,
     required this.appName,
@@ -157,16 +186,31 @@ class BuildRecord {
     this.notes,
   });
 
+  /// Unique id of the build.
   final String id;
+
+  /// Name of the app that was built.
   final String appName;
+
+  /// Android application id, when known; null otherwise.
   final String? packageName;
 
   /// Null when the project has no flavors.
   final String? flavor;
+
+  /// Build mode used.
   final BuildMode mode;
+
+  /// Kind of artifact produced.
   final ArtifactType type;
+
+  /// User facing version, the part before `+` in `pubspec.yaml`.
   final String versionName;
+
+  /// Build number (Android versionCode / iOS build number).
   final int versionCode;
+
+  /// When the build was made.
   final DateTime createdAt;
 
   /// Entry point passed with `-t`, if any.
@@ -177,6 +221,8 @@ class BuildRecord {
 
   /// Folder holding this build, relative to the ledger's root folder.
   final String outputDir;
+
+  /// Files the build produced.
   final List<BuildArtifact> artifacts;
 
   /// Dart split-debug-info folder (relative), present for obfuscated builds.
@@ -184,15 +230,26 @@ class BuildRecord {
 
   /// R8/ProGuard mapping.txt (relative), when minification produced one.
   final String? mappingFile;
+
+  /// Whether the build was obfuscated (`--obfuscate`).
   final bool obfuscated;
 
+  /// Git commit hash at build time, if available.
   final String? gitCommit;
+
+  /// Git branch at build time, if available.
   final String? gitBranch;
+
+  /// Flutter SDK version used, if known.
   final String? flutterVersion;
+
+  /// Build duration in milliseconds; null when not measured.
   final int? durationMs;
 
   /// When the build was marked public (released to users).
   final DateTime? publishedAt;
+
+  /// Google Play upload details; null if never uploaded.
   final PlayUpload? play;
 
   /// Tool name ([SymbolTargets]) to upload time.
@@ -207,11 +264,20 @@ class BuildRecord {
   /// Recorded events, oldest first. Empty for a build nothing has happened
   /// to yet and for rows written before events existed; use [events].
   final List<BuildEvent> history;
+
+  /// Free form note; null if none.
   final String? notes;
 
+  /// [flavor], or `default` when there is none.
   String get flavorLabel => flavor ?? 'default';
+
+  /// Version as `name+code`, for example `1.2.0+14`.
   String get version => '$versionName+$versionCode';
+
+  /// Whether the build was marked published.
   bool get isPublished => publishedAt != null;
+
+  /// Whether the build was uploaded to Google Play.
   bool get isOnPlay => play != null;
 
   /// Published or uploaded to Google Play. A released build keeps its
@@ -219,6 +285,7 @@ class BuildRecord {
   /// field can still be traced; only its APK/AAB/IPA files may be deleted.
   bool get isReleased => isPublished || isOnPlay;
 
+  /// Whether the APK/AAB/IPA files have been deleted.
   bool get artifactsDeleted => artifactsDeletedAt != null;
 
   /// The most advanced state: published, else uploaded to Play, else built.
@@ -282,10 +349,16 @@ class BuildRecord {
     ]..sort((a, b) => a.at.compareTo(b.at)));
   }
 
+  /// Time of the newest entry in [events].
   DateTime get lastEventAt => events.last.at;
 
+  /// Combined size of all [artifacts] in bytes.
   int get totalSize => artifacts.fold(0, (sum, a) => sum + a.sizeBytes);
 
+  /// Returns a copy with the given changes and matching history events appended.
+  ///
+  /// Null arguments keep the current value; [clearPublished] and [clearPlay]
+  /// reset those fields instead.
   BuildRecord copyWith({
     DateTime? publishedAt,
     bool clearPublished = false,
@@ -341,6 +414,7 @@ class BuildRecord {
     );
   }
 
+  /// Returns the JSON form stored in the ledger, including derived status fields.
   Map<String, Object?> toJson() => {
         'id': id,
         'appName': appName,
@@ -381,6 +455,7 @@ class BuildRecord {
         if (notes != null) 'notes': notes,
       };
 
+  /// Reads a record from its ledger JSON; older rows without optional fields are accepted.
   factory BuildRecord.fromJson(Map<String, Object?> json) {
     final status = (json['status'] as Map?)?.cast<String, Object?>() ?? {};
     final symbols = (status['symbols'] as Map?)?.cast<String, Object?>() ?? {};

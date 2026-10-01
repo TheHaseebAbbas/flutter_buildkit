@@ -17,6 +17,10 @@ import 'console.dart';
 /// "Save", which creates the file from the documented template when the
 /// project has none yet.
 class SettingsScreen {
+  /// Creates the editor for [project].
+  ///
+  /// [configFile] is the file to edit, or null to create one. [env] defaults to
+  /// the process environment.
   SettingsScreen({
     required this.console,
     required this.project,
@@ -30,19 +34,29 @@ class SettingsScreen {
     editor = original;
   }
 
+  /// Where prompts and output go.
   final Console console;
+
+  /// The Flutter project the settings belong to.
   final FlutterProject project;
 
   /// The file to edit; null when the project has none (it is created).
   final String? configFile;
+
+  /// Environment variables used when building a preview of the config.
   final Map<String, String> env;
 
+  /// The file contents as loaded, to detect unsaved changes.
   late ConfigEditor original;
+
+  /// The in-memory copy that edits are applied to.
   late ConfigEditor editor;
 
+  /// Where Save writes: [configFile], or the default file name in the project.
   String get savePath =>
       configFile ?? p.join(project.dir, AppConfig.fileNames.first);
 
+  /// True when there are unsaved changes.
   bool get dirty => editor.text != original.text;
 
   AppConfig _build(ConfigEditor e) =>

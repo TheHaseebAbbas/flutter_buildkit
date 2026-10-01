@@ -22,6 +22,7 @@ enum UiMode {
   /// Always numbered questions (type 2, or 1,3 for several, then Enter).
   plain;
 
+  /// Parses a `--ui` value (`keys`, `plain`, ...), defaulting to [auto] when unknown or null.
   static UiMode parse(String? value) => switch (value?.toLowerCase()) {
         'keys' || 'arrows' || 'interactive' => UiMode.keys,
         'plain' || 'numbers' || 'text' => UiMode.plain,
@@ -35,6 +36,11 @@ enum UiMode {
 /// numbers. When stdin or stdout is not a terminal, on Windows, or with
 /// `--ui plain`, every prompt is a plain numbered question instead.
 class Console {
+  /// Creates a console.
+  ///
+  /// When [readLine] or [write] is given (tests, piping) the console is
+  /// non-interactive and uses plain styling; otherwise [mode] and the terminal
+  /// decide whether arrow-key prompts are used.
   Console({
     String? Function()? readLine,
     void Function(String)? write,
@@ -88,8 +94,13 @@ class Console {
 
   // ---- output --------------------------------------------------------------
 
+  /// Writes [text] followed by a newline.
   void out(String text) => _write('$text\n');
+
+  /// Writes an empty line.
   void blank() => _write('\n');
+
+  /// Writes [text] as is, without a trailing newline.
   void raw(String text) => _write(text);
 
   int get _columns {
@@ -146,9 +157,16 @@ class Console {
   void kv(String label, String value, {int labelWidth = 14}) =>
       out('${style.dim(label.padRight(labelWidth))}$value');
 
+  /// Prints [text] as a success line, with a green check mark.
   void success(String text) => out(style.ok(text));
+
+  /// Prints [text] as an error line, in red.
   void error(String text) => out(style.err(text));
+
+  /// Prints [text] as a warning line, in yellow.
   void warn(String text) => out(style.warn(text));
+
+  /// Prints [text] dimmed, for secondary information.
   void note(String text) => out(style.dim(text));
 
   // ---- raw key input -----------------------------------------------------
@@ -283,6 +301,9 @@ class Console {
     return lines.join('\n');
   }
 
+  /// Asks a yes/no question and returns the answer.
+  ///
+  /// Enter picks [defaultValue]; in plain mode returns false when input ends.
   Future<bool> confirm(String question, {bool defaultValue = false}) async {
     final hint = defaultValue ? 'Y/n' : 'y/N';
     if (!interactive) {

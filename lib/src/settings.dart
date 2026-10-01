@@ -7,6 +7,7 @@ import 'config.dart';
 import 'model/build_options.dart';
 import 'services/flutter_builder.dart';
 
+/// How a setting is edited in the settings screen.
 enum SettingKind {
   /// true / false.
   boolean,
@@ -21,14 +22,21 @@ enum SettingKind {
   list,
 }
 
+/// One selectable value of a [SettingKind.choice] setting.
 class SettingChoice {
+  /// Creates a choice with [value] and an optional explanatory [note].
   const SettingChoice(this.value, {this.note});
+
+  /// The value written to the config file.
   final String value;
+
+  /// Short description shown next to the value; null for none.
   final String? note;
 }
 
 /// What previews use as the example build.
 class PreviewContext {
+  /// Creates an example build; [now] defaults to the current time.
   PreviewContext({
     required this.appName,
     required this.versionName,
@@ -38,8 +46,13 @@ class PreviewContext {
     DateTime? now,
   }) : now = now ?? DateTime.now();
 
+  /// Example application name.
   final String appName;
+
+  /// Example version name, e.g. `1.2.0`.
   final String versionName;
+
+  /// Example build number.
   final int versionCode;
 
   /// An example flavor, or null for a project without flavors.
@@ -47,8 +60,11 @@ class PreviewContext {
 
   /// An example named entry point, or null for the default one.
   final String? entry;
+
+  /// Example build time used for `{datetime}` and similar tokens.
   final DateTime now;
 
+  /// A copy using entry point [name] and, when given, [flavor].
   PreviewContext withEntry(String? name, {String? flavor}) => PreviewContext(
         appName: appName,
         versionName: versionName,
@@ -58,6 +74,7 @@ class PreviewContext {
         now: now,
       );
 
+  /// The [BuildNaming] for this example built in [mode] as [type].
   BuildNaming naming(BuildMode mode, ArtifactType type) => BuildNaming(
         appName: appName,
         flavor: flavor,
@@ -73,6 +90,7 @@ class PreviewContext {
 /// One option in the settings screen: where it lives in the YAML file, how to
 /// show and edit it, and what it will do (the preview).
 class SettingDef {
+  /// Creates a setting definition; [choices] defaults to none.
   const SettingDef({
     required this.path,
     required this.summary,
@@ -84,9 +102,16 @@ class SettingDef {
     this.hint,
   });
 
+  /// Key path in the YAML file, e.g. `['pre_build', 'clean']`.
   final List<String> path;
+
+  /// One line describing the setting.
   final String summary;
+
+  /// How the setting is edited.
   final SettingKind kind;
+
+  /// Selectable values for [SettingKind.choice].
   final List<SettingChoice> choices;
 
   /// With [SettingKind.choice]: also accept a value typed by the user.
@@ -102,6 +127,7 @@ class SettingDef {
   /// summary used next to each choice.
   final List<String> Function(AppConfig c, PreviewContext x) preview;
 
+  /// The [path] joined with dots, e.g. `pre_build.clean`.
   String get key => path.join('.');
 }
 

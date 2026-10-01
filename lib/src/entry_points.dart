@@ -5,14 +5,17 @@ import 'flutter_project.dart';
 /// One Dart file to build. [name] is null for the default entry point, which
 /// keeps the plain names.
 class EntryPoint {
+  /// Creates an entry point called [name] built from the file at [path].
   const EntryPoint(this.name, this.path);
 
+  /// Short name of the entry point, or null for the default one.
   final String? name;
 
   /// Passed to `flutter build -t`; null means Flutter's default
   /// (`lib/main.dart`).
   final String? path;
 
+  /// The name shown in menus: [name], or `(default)` when it is null.
   String get label => name ?? '(default)';
 
   @override

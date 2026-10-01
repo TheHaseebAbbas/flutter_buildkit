@@ -22,9 +22,12 @@ List<int>? parseNumberList(String text) {
   return out.isEmpty ? null : out;
 }
 
+/// One row of a selection list.
 class SelectItem {
+  /// Creates a row with [label], an optional dimmed [hint], and whether it is [disabled].
   const SelectItem(this.label, {this.hint, this.disabled = false});
 
+  /// The text shown for the row.
   final String label;
 
   /// Dimmed text after the label.
@@ -35,7 +38,17 @@ class SelectItem {
   final bool disabled;
 }
 
-enum SelectOutcome { none, submit, cancel }
+/// What a key press did to a [SelectModel].
+enum SelectOutcome {
+  /// Keep going; nothing was decided.
+  none,
+
+  /// The user confirmed their choice.
+  submit,
+
+  /// The user backed out.
+  cancel
+}
 
 /// State and key handling of an arrow-key list, single or multi select.
 /// Pure and terminal-free, so it can be unit tested.
@@ -47,6 +60,10 @@ enum SelectOutcome { none, submit, cancel }
 /// Numbers always work too: type `2` (or `1,3` / `1-3` / `1 3` for several)
 /// and press Enter. The numbers are the ones shown next to the rows.
 class SelectModel {
+  /// Creates a model over [items].
+  ///
+  /// [multi] allows ticking several rows. [initial] is the starting cursor row
+  /// and [ticked] the rows ticked at the start.
   SelectModel(this.items, {this.multi = false, int? initial, Set<int>? ticked})
       : selected = {...?ticked} {
     final start = initial ?? 0;
@@ -54,7 +71,10 @@ class SelectModel {
     if (items.isNotEmpty && items[cursor].disabled) _step(1);
   }
 
+  /// The rows of the list.
   final List<SelectItem> items;
+
+  /// Whether several rows can be ticked (otherwise one is chosen).
   final bool multi;
 
   /// Index into [items] of the highlighted row.
@@ -63,7 +83,10 @@ class SelectModel {
   /// Ticked indexes into [items] (multi select).
   final Set<int> selected;
 
+  /// The text typed after `/` to narrow the list.
   String filter = '';
+
+  /// True while the user is typing a filter.
   bool filtering = false;
 
   /// Digits typed so far (`1,3`), applied on Enter.
@@ -88,6 +111,7 @@ class SelectModel {
   /// Sorted ticked indexes.
   List<int> get result => selected.toList()..sort();
 
+  /// Applies one key press and reports whether the list is done.
   SelectOutcome handle(KeyPress k) {
     error = null;
     if (filtering) return _handleFilter(k);

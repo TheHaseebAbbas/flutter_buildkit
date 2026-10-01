@@ -22,6 +22,9 @@ import 'ui/table.dart';
 
 /// The interactive main menu.
 class App {
+  /// Creates the menu for [project], using [config] and [ledger].
+  ///
+  /// [console] defaults to a new [Console]; [ledgerOverride] is the ledger path from the command line.
   App({
     required this.project,
     required this.config,
@@ -30,11 +33,16 @@ class App {
     this.ledgerOverride,
   }) : console = console ?? Console();
 
+  /// The Flutter project the menu operates on.
   final FlutterProject project;
 
   /// Replaced by [_reload] after the settings are saved.
   AppConfig config;
+
+  /// The build ledger currently in use; reopened when the ledger path changes.
   Ledger ledger;
+
+  /// Prompts and styled output for the menu.
   final Console console;
 
   /// Ledger path given on the command line; it wins over the config.
@@ -88,6 +96,7 @@ class App {
         'Ledger   ${ledger.file.path}  (${ledger.records.length} builds)',
       ]);
 
+  /// Shows the banner and runs the main menu loop until the user quits.
   Future<void> run() async {
     _banner();
     while (true) {

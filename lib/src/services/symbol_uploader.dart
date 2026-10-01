@@ -8,8 +8,12 @@ import '../ledger/ledger.dart';
 import '../model/build_record.dart';
 import 'process_runner.dart';
 
+/// Thrown when symbols cannot be uploaded, e.g. none exist or settings are missing.
 class SymbolUploadException implements Exception {
+  /// Creates an exception carrying [message].
   SymbolUploadException(this.message);
+
+  /// Human-readable description of what went wrong.
   final String message;
   @override
   String toString() => message;
@@ -18,6 +22,7 @@ class SymbolUploadException implements Exception {
 /// Uploads a build's debug symbols to Firebase Crashlytics and Sentry by
 /// shelling out to the `firebase` and `sentry-cli` tools.
 class SymbolUploader {
+  /// Creates an uploader for [project] using [config] and [ledger]; [runner] executes the CLI tools and [log] receives output.
   SymbolUploader({
     required this.project,
     required this.config,
@@ -26,10 +31,19 @@ class SymbolUploader {
     void Function(String)? log,
   }) : log = log ?? ((_) {});
 
+  /// Project, used to locate Firebase and iOS Pods files.
   final FlutterProject project;
+
+  /// Configuration for Crashlytics and Sentry.
   final AppConfig config;
+
+  /// Ledger used to resolve stored symbol paths.
   final Ledger ledger;
+
+  /// Runs the `firebase` and `sentry-cli` processes.
   final ProcessRunner runner;
+
+  /// Receives progress and process output lines.
   final void Function(String) log;
 
   String? _abs(String? relative) =>
@@ -108,6 +122,9 @@ class SymbolUploader {
     }
   }
 
+  /// Firebase app id for [record]'s flavor, or null if none is found.
+  ///
+  /// Uses the configured id first, then `google-services.json` (Android) or `GoogleService-Info.plist` (iOS).
   String? crashlyticsAppId(BuildRecord record) {
     final configured = config.flavor(record.flavor).firebaseAppId;
     if (configured != null) return configured;

@@ -34,6 +34,7 @@ String renderTable(
   ].join('\n');
 }
 
+/// Formats [bytes] as a human-readable size such as `1.5 MB`.
 String formatBytes(int bytes) {
   const units = ['B', 'KB', 'MB', 'GB'];
   var value = bytes.toDouble();

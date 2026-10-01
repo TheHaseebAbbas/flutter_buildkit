@@ -15,6 +15,7 @@ import 'process_runner.dart';
 
 /// Everything the user chose for one build.
 class BuildRequest {
+  /// Creates a build request; [type], [mode], [versionName] and [versionCode] are required.
   const BuildRequest({
     required this.type,
     required this.mode,
@@ -32,31 +33,58 @@ class BuildRequest {
     this.notes,
   });
 
+  /// Artifact to build (apk, aab, ...), passed to `flutter build <type>`.
   final ArtifactType type;
+
+  /// Build mode, passed as `--debug`, `--profile` or `--release`.
   final BuildMode mode;
+
+  /// Flavor passed to `--flavor`, or null for none.
   final String? flavor;
+
+  /// Dart entry file passed to `--target`, or null for the default.
   final String? target;
 
   /// Name of the entry point, when a named one is built.
   final String? entryPoint;
+
+  /// File passed to `--dart-define-from-file`, or null.
   final String? dartDefineFile;
+
+  /// Value for `--build-name`.
   final String versionName;
+
+  /// Value for `--build-number`.
   final int versionCode;
+
+  /// Whether to request `--obfuscate`; see [willObfuscate] for the effective value.
   final bool obfuscate;
+
+  /// Whether to pass `--split-per-abi` (APK builds only).
   final bool splitPerAbi;
+
+  /// Additional raw arguments appended to the `flutter build` command.
   final List<String> extraArgs;
+
+  /// Application id of the built app, recorded in the ledger, or null.
   final String? packageName;
 
   /// Labels of the pre-build steps that ran, for the ledger.
   final List<String> preBuild;
+
+  /// Free-form note stored with the build in the ledger.
   final String? notes;
 
   /// Obfuscation is only valid for profile and release builds.
   bool get willObfuscate => obfuscate && mode.supportsObfuscation;
 }
 
+/// Thrown when a build cannot be run or `flutter build` fails.
 class BuildException implements Exception {
+  /// Creates an exception carrying [message].
   BuildException(this.message);
+
+  /// Human-readable description of what went wrong.
   final String message;
   @override
   String toString() => message;
@@ -85,6 +113,7 @@ List<String> flutterBuildArgs(BuildRequest r, {String? symbolsDir}) => [
 /// Runs `flutter build`, copies the outputs into the build folder tree and
 /// records the build in the ledger.
 class FlutterBuilder {
+  /// Creates a builder for [project] using [config] and [ledger]; [runner] runs `flutter` and [log] receives output lines.
   FlutterBuilder({
     required this.project,
     required this.config,
@@ -93,12 +122,24 @@ class FlutterBuilder {
     void Function(String)? log,
   }) : log = log ?? ((_) {});
 
+  /// Project being built; its directory is the working directory for `flutter`.
   final FlutterProject project;
+
+  /// Configuration (flutter command, output layout and root).
   final AppConfig config;
+
+  /// Ledger that records each finished build.
   final Ledger ledger;
+
+  /// Runs the `flutter build` process.
   final ProcessRunner runner;
+
+  /// Receives progress and process output lines.
   final void Function(String) log;
 
+  /// Builds [request] with `flutter build`, copies outputs into the build folder and records it in the ledger.
+  ///
+  /// Returns the stored [BuildRecord]. Throws [BuildException] if the build fails.
   Future<BuildRecord> build(BuildRequest request) async {
     final started = DateTime.now();
     final appName = project.appName;
@@ -323,6 +364,7 @@ String newBuildId(DateTime time) {
   return '${BuildPaths.timestamp(time)}-$rand';
 }
 
+/// Recursively copies the contents of [from] into [to], creating [to] if needed.
 Future<void> copyDirectory(Directory from, Directory to) async {
   await to.create(recursive: true);
   await for (final entity in from.list(recursive: true, followLinks: false)) {

@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 /// A Dart file that can be run as an app: it defines `main()`.
 class DartEntry {
+  /// Creates an entry for the file at [path], called [name].
   const DartEntry(this.path, this.name);
 
   /// Relative to the project, with `/` separators.

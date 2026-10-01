@@ -8,8 +8,10 @@ import '../model/build_record.dart';
 
 /// Ledger operations that also touch the build folders on disk.
 class BuildManager {
+  /// Creates a manager that works on [ledger] and its folders.
   BuildManager(this.ledger);
 
+  /// The ledger whose records this manager changes.
   final Ledger ledger;
 
   /// Marks a build as published (released to users).
@@ -17,6 +19,7 @@ class BuildManager {
       ledger.update(
           r.id, (x) => x.copyWith(publishedAt: (at ?? DateTime.now()).toUtc()));
 
+  /// Clears the published mark from [r]; this is recorded as an `unpublished` event.
   Future<BuildRecord> unmarkPublished(BuildRecord r) =>
       ledger.update(r.id, (x) => x.copyWith(clearPublished: true));
 
@@ -81,7 +84,9 @@ class BuildManager {
   }
 }
 
+/// What [BuildManager.delete] did, per build.
 class DeleteResult {
+  /// Creates a result from the three outcome groups.
   DeleteResult(this.deleted, this.filesOnly, this.failed);
 
   /// Folder and ledger row removed.
@@ -89,5 +94,7 @@ class DeleteResult {
 
   /// Released builds: only the binaries were removed; symbols and row kept.
   final List<BuildRecord> filesOnly;
+
+  /// Builds that could not be deleted, with the error that stopped each.
   final Map<BuildRecord, Object> failed;
 }

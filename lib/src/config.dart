@@ -7,6 +7,7 @@ import 'build_paths.dart';
 
 /// Per-flavor settings. Every field is optional.
 class FlavorConfig {
+  /// Creates a flavor configuration; all fields are optional.
   const FlavorConfig({
     this.target,
     this.dartDefineFile,
@@ -31,12 +32,17 @@ class FlavorConfig {
 
   /// Overrides `sentry.project` for this flavor.
   final String? sentryProject;
+
+  /// Extra arguments appended to the Flutter build command for this flavor.
   final List<String> extraArgs;
 
   /// Named entry points for this flavor (`name: path`). When set they
   /// replace [target] and the top-level `entry_points`.
   final Map<String, String> entryPoints;
 
+  /// Reads a flavor from its YAML map, using the keys `target`,
+  /// `dart_define_file`, `package_name`, `firebase_app_id`, `sentry_project`,
+  /// `extra_args` and `entry_points`.
   factory FlavorConfig.fromYaml(Map<Object?, Object?> y) => FlavorConfig(
         entryPoints: AppConfig.parseEntryPoints(
             y['entry_points'], 'flavors.*.entry_points'),
@@ -51,6 +57,7 @@ class FlavorConfig {
 
 /// Which pre-build steps are ticked by default in the build menu.
 class PreBuildConfig {
+  /// Creates the pre-build defaults: no clean, build_runner and gen-l10n on.
   const PreBuildConfig({
     this.clean = false,
     this.buildRunner = true,
@@ -58,13 +65,22 @@ class PreBuildConfig {
     this.buildRunnerArgs = const ['--delete-conflicting-outputs'],
   });
 
+  /// Run `flutter clean` and `pub get` first (`pre_build.clean`, default false).
   final bool clean;
+
+  /// Run `build_runner build` first (`pre_build.build_runner`, default true).
   final bool buildRunner;
+
+  /// Run `flutter gen-l10n` first (`pre_build.gen_l10n`, default true).
   final bool genL10n;
+
+  /// Arguments for `build_runner build` (`pre_build.build_runner_args`).
   final List<String> buildRunnerArgs;
 }
 
+/// Google Play upload settings, from the `play:` section.
 class PlayConfig {
+  /// Creates Play settings; uploads default to the internal track.
   const PlayConfig({
     this.serviceAccountJson,
     this.defaultTrack = 'internal',
@@ -74,22 +90,36 @@ class PlayConfig {
 
   /// Path to the Google Play service account key (JSON).
   final String? serviceAccountJson;
+
+  /// Track to upload to by default (`play.default_track`), e.g. `internal`.
   final String defaultTrack;
+
+  /// Release status for uploads (`play.default_release_status`), e.g.
+  /// `completed`.
   final String defaultReleaseStatus;
 
   /// Also upload R8 mapping.txt as the deobfuscation file.
   final bool uploadMapping;
 
+  /// Whether a service account key path is configured.
   bool get hasCredentials => serviceAccountJson != null;
 }
 
+/// Firebase Crashlytics symbol upload settings, from the `crashlytics:` section.
 class CrashlyticsConfig {
+  /// Creates Crashlytics settings; enabled and using `firebase` by default.
   const CrashlyticsConfig({this.enabled = true, this.cli = const ['firebase']});
+
+  /// Whether Crashlytics symbol upload is offered (`crashlytics.enabled`).
   final bool enabled;
+
+  /// Command used to run the Firebase CLI (`crashlytics.cli`).
   final List<String> cli;
 }
 
+/// Sentry symbol upload settings, from the `sentry:` section.
 class SentryConfig {
+  /// Creates Sentry settings; enabled and using `sentry-cli` by default.
   const SentryConfig({
     this.enabled = true,
     this.cli = const ['sentry-cli'],
@@ -98,9 +128,17 @@ class SentryConfig {
     this.authToken,
     this.url,
   });
+
+  /// Whether Sentry upload is offered (`sentry.enabled`).
   final bool enabled;
+
+  /// Command used to run Sentry CLI (`sentry.cli`).
   final List<String> cli;
+
+  /// Sentry organization slug (`sentry.org`, or SENTRY_ORG); null when unset.
   final String? org;
+
+  /// Sentry project slug (`sentry.project`, or SENTRY_PROJECT); null when unset.
   final String? project;
 
   /// Prefer the SENTRY_AUTH_TOKEN environment variable over the config file.
@@ -113,6 +151,7 @@ class SentryConfig {
 /// Settings for one Flutter project, read from `flutter_buildkit.yaml`
 /// in the project root, with secrets taken from environment variables.
 class AppConfig {
+  /// Creates a config for [projectDir]; unset options take their defaults.
   const AppConfig({
     required this.projectDir,
     this.configFile,
@@ -134,8 +173,10 @@ class AppConfig {
     this.sentry = const SentryConfig(),
   });
 
+  /// Config file names looked for in the project root, in order.
   static const fileNames = ['flutter_buildkit.yaml', 'flutter_buildkit.yml'];
 
+  /// Absolute or relative path of the Flutter project root.
   final String projectDir;
 
   /// The file this config was read from, or null when defaults are used.
@@ -160,20 +201,39 @@ class AppConfig {
 
   /// Command used to run Flutter, e.g. `[fvm, flutter]`.
   final List<String> flutter;
+
+  /// Obfuscate release and profile builds (`obfuscate`, default true).
   final bool obfuscate;
+
+  /// Build one APK per ABI (`split_per_abi`, default false).
   final bool splitPerAbi;
+
+  /// Extra arguments added to every build (`extra_build_args`).
   final List<String> extraBuildArgs;
+
+  /// Default pre-build steps (`pre_build`).
   final PreBuildConfig preBuild;
 
   /// Paths to `retrace` and `ndk-stack` when they are not on PATH or found
   /// through ANDROID_HOME / ANDROID_NDK_HOME.
   final String? androidRetrace;
+
+  /// Path to `ndk-stack` (`android.ndk_stack`, or FBK_NDK_STACK).
   final String? androidNdkStack;
+
+  /// Per-flavor settings by flavor name (`flavors`).
   final Map<String, FlavorConfig> flavors;
+
+  /// Google Play settings (`play`).
   final PlayConfig play;
+
+  /// Crashlytics settings (`crashlytics`).
   final CrashlyticsConfig crashlytics;
+
+  /// Sentry settings (`sentry`).
   final SentryConfig sentry;
 
+  /// [outputDir] resolved to a normalized absolute path.
   String get outputRoot => _resolve(outputDir);
 
   /// True when [outputRoot] is inside the Flutter project, where the app
@@ -194,10 +254,12 @@ class AppConfig {
     return layout;
   }
 
+  /// Resolved path of the ledger file, `<outputRoot>/ledger.json` by default.
   String get ledgerPath => ledgerFile == null
       ? p.join(outputRoot, 'ledger.json')
       : _resolve(ledgerFile!);
 
+  /// Settings for the flavor [name]; empty defaults when null or unknown.
   FlavorConfig flavor(String? name) => name == null
       ? const FlavorConfig()
       : flavors[name] ?? const FlavorConfig();
@@ -235,6 +297,10 @@ class AppConfig {
     return fromYaml(projectDir, y, env: env, configFile: path);
   }
 
+  /// Builds a config from the parsed YAML map [y].
+  ///
+  /// [env] overrides some keys and supplies secrets; [configFile] is only
+  /// recorded. Throws [ConfigException] for invalid values.
   static AppConfig fromYaml(String projectDir, Map<Object?, Object?> y,
       {Map<String, String> env = const {}, String? configFile}) {
     final playY = _map(y['play']);
@@ -416,6 +482,7 @@ class AppConfig {
         .join('\n');
   }
 
+  /// Commented starter config written for new projects.
   static const template = '''
 # flutter_buildkit config. Keep this file out of git if it holds secrets;
 # prefer the environment variables noted below for credentials.
@@ -508,8 +575,12 @@ sentry:
 List<String> _stringList(Object? v) =>
     v is List ? [for (final s in v) '$s'] : const [];
 
+/// Thrown when the config file or one of its values is invalid.
 class ConfigException implements Exception {
+  /// Creates an exception with [message].
   ConfigException(this.message);
+
+  /// What is wrong, phrased for the user.
   final String message;
   @override
   String toString() => message;

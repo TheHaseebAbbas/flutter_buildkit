@@ -23,9 +23,13 @@ enum LayoutPreset {
 
   const LayoutPreset(this.id, this.template);
 
+  /// Value used for `output_layout:` in the config.
   final String id;
+
+  /// The folder template this preset stands for.
   final String template;
 
+  /// The preset whose [id] matches, or null when there is none.
   static LayoutPreset? byId(String id) {
     for (final p in values) {
       if (p.id == id) return p;
@@ -36,6 +40,7 @@ enum LayoutPreset {
 
 /// Everything a name template can use.
 class BuildNaming {
+  /// Creates the values a template can use; [entry] is null for the default.
   const BuildNaming({
     required this.appName,
     required this.flavor,
@@ -47,22 +52,37 @@ class BuildNaming {
     this.entry,
   });
 
+  /// Name of the app.
   final String appName;
 
   /// Null when the project has no flavors.
   final String? flavor;
+
+  /// Build mode (debug, profile or release).
   final BuildMode mode;
+
+  /// Version name from pubspec, e.g. `1.2.0`.
   final String versionName;
+
+  /// Build number from pubspec.
   final int versionCode;
+
+  /// When the build started.
   final DateTime time;
+
+  /// Kind of artifact, e.g. apk, aab or ipa.
   final ArtifactType type;
 
   /// Name of the entry point (e.g. `admin`); null for the default one.
   final String? entry;
 }
 
+/// Thrown when a name or folder template is invalid.
 class PathTemplateException implements Exception {
+  /// Creates an exception with [message].
   PathTemplateException(this.message);
+
+  /// What is wrong with the template, phrased for the user.
   final String message;
   @override
   String toString() => message;
@@ -79,6 +99,7 @@ class PathTemplateException implements Exception {
 class PathTemplate {
   PathTemplate._(this.source);
 
+  /// Names of the tokens a template may use, without braces.
   static const tokens = [
     'app',
     'flavor',
@@ -95,6 +116,7 @@ class PathTemplate {
     'entry',
   ];
 
+  /// The normalized template text.
   final String source;
 
   /// Parses [source], rejecting unknown tokens and unsafe paths.
@@ -178,6 +200,9 @@ class PathTemplate {
 /// `{app}-{flavor}-{mode}-{version}-{datetime}`. Without a flavor the
 /// flavor part is dropped from file names and shown as `default` in folders.
 class BuildPaths {
+  /// Creates paths under [root]; null [layout] or [fileName] use the defaults.
+  ///
+  /// Throws [PathTemplateException] for an invalid template.
   BuildPaths(
     this.root, {
     String? layout,
@@ -187,13 +212,25 @@ class BuildPaths {
         fileName =
             PathTemplate.parse(fileName ?? defaultFileName, isFolder: false);
 
+  /// Default artifact file name template.
   static const defaultFileName = '{app}-{flavor}-{mode}-{version}-{datetime}';
+
+  /// Folder name used when the project has no flavor.
   static const defaultFlavor = 'default';
+
+  /// Folder inside a build folder that holds the built artifacts.
   static const artifactsFolder = 'artifacts';
+
+  /// Folder inside a build folder that holds debug symbols and mappings.
   static const symbolsFolder = 'symbols';
 
+  /// Output folder that all builds live under.
   final String root;
+
+  /// Template for the folder of one build, relative to [root].
   final PathTemplate layout;
+
+  /// Template for the artifact file name, without extension.
   final PathTemplate fileName;
 
   /// Resolves a config value: a preset id (`by-version`) or a template.

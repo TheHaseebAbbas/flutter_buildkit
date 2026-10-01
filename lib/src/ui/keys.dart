@@ -1,32 +1,68 @@
 import 'dart:convert';
 
+/// A key the terminal can report to a prompt.
 enum Key {
+  /// Up arrow.
   up,
+
+  /// Down arrow.
   down,
+
+  /// Left arrow.
   left,
+
+  /// Right arrow.
   right,
+
+  /// Home key.
   home,
+
+  /// End key.
   end,
+
+  /// Page Up key.
   pageUp,
+
+  /// Page Down key.
   pageDown,
+
+  /// Enter or Return (CR, LF or CRLF).
   enter,
+
+  /// Space bar.
   space,
+
+  /// Backspace or Delete.
   backspace,
+
+  /// Escape key.
   escape,
+
+  /// Ctrl-C.
   ctrlC,
+
+  /// Ctrl-U, which clears a typed line.
   ctrlU,
+
+  /// A printable character; see [KeyPress.char].
   char,
 }
 
+/// One key press: a [Key] plus, for [Key.char], the typed character.
 class KeyPress {
+  /// Creates a press of [key], with the typed [char] if any.
   const KeyPress(this.key, [this.char = '']);
+
+  /// Creates a [Key.char] press for the character [c].
   const KeyPress.char(String c) : this(Key.char, c);
 
+  /// Which key was pressed.
   final Key key;
 
   /// The typed character when [key] is [Key.char].
   final String char;
 
+  /// Whether this is a printable-character press of exactly [c].
   bool isChar(String c) => key == Key.char && char == c;
 
   @override

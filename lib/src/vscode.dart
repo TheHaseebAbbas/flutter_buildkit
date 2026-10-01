@@ -9,8 +9,12 @@ import 'flutter_project.dart';
 import 'jsonc.dart';
 import 'launch_json.dart';
 
+/// Thrown when launch.json cannot be read or changed safely.
 class LaunchJsonException implements Exception {
+  /// Creates an exception carrying a human-readable [message].
   LaunchJsonException(this.message);
+
+  /// Explains what went wrong and that the file was left untouched.
   final String message;
   @override
   String toString() => message;
@@ -18,6 +22,7 @@ class LaunchJsonException implements Exception {
 
 /// One run configuration to add to `.vscode/launch.json`.
 class LaunchEntry {
+  /// Creates an entry; [name] and [mode] are required.
   const LaunchEntry({
     required this.name,
     required this.mode,
@@ -26,21 +31,28 @@ class LaunchEntry {
     this.dartDefineFile,
   });
 
+  /// Name shown in VS Code's run menu.
   final String name;
 
   /// debug, profile or release.
   final String mode;
+
+  /// Value passed as `--flavor`, or null when the project has no flavors.
   final String? flavor;
 
   /// Entry point; null runs `lib/main.dart`.
   final String? program;
+
+  /// Path to a `--dart-define-from-file` file, or null for none.
   final String? dartDefineFile;
 
+  /// Command-line arguments: `--flavor` and `--dart-define-from-file` when set.
   List<String> get args => [
         if (flavor != null) ...['--flavor', flavor!],
         if (dartDefineFile != null) '--dart-define-from-file=$dartDefineFile',
       ];
 
+  /// This entry as a [LaunchConfig], so it can be compared with existing ones.
   LaunchConfig get asConfig => LaunchConfig(
         name: name,
         program: program,
@@ -67,6 +79,7 @@ class LaunchEntry {
   }
 }
 
+/// Run modes written to launch.json, in order.
 const launchModes = ['debug', 'profile', 'release'];
 
 /// `clientDb` and `pre_prod` become `CLIENT DB` and `PRE PROD`.
@@ -123,6 +136,7 @@ List<LaunchEntry> launchEntriesFor(AppConfig config, FlutterProject project) {
 
 /// What writing launch.json would do.
 class LaunchPlan {
+  /// Creates a plan from the [existing] text and the [add] and [skipped] entries.
   LaunchPlan({
     required this.existing,
     required this.add,
@@ -131,6 +145,8 @@ class LaunchPlan {
 
   /// The current text, or null when the file does not exist.
   final String? existing;
+
+  /// Entries that will be added to launch.json.
   final List<LaunchEntry> add;
 
   /// Entries left out because launch.json already has them (same name, or
@@ -138,6 +154,9 @@ class LaunchPlan {
   final List<LaunchEntry> skipped;
 }
 
+/// Works out which entries to add to the project's launch.json.
+///
+/// Throws [LaunchJsonException] when the existing file is not valid JSONC.
 LaunchPlan planLaunchJson(AppConfig config, FlutterProject project) {
   final file = launchJsonFile(project);
   final existing = file.existsSync() ? file.readAsStringSync() : null;
@@ -167,6 +186,7 @@ LaunchPlan planLaunchJson(AppConfig config, FlutterProject project) {
   return LaunchPlan(existing: existing, add: add, skipped: skipped);
 }
 
+/// The `.vscode/launch.json` file of [project]; it may not exist.
 File launchJsonFile(FlutterProject project) =>
     File(p.join(project.dir, '.vscode', 'launch.json'));
 

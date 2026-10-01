@@ -10,8 +10,10 @@ import 'config.dart';
 /// `List<String>` (written as a flow list), or null to remove the key.
 /// Immutable: every change returns a new editor.
 class ConfigEditor {
+  /// Creates an editor over [text]; CRLF line endings are normalized to LF.
   ConfigEditor(String text) : text = text.replaceAll('\r\n', '\n');
 
+  /// The current YAML text.
   final String text;
 
   /// The editor for a new config file: the documented template.

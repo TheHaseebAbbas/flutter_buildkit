@@ -7,6 +7,7 @@ import '../ledger/ledger.dart';
 import '../model/build_record.dart';
 import 'process_runner.dart';
 
+/// Kind of stack trace to de-obfuscate.
 enum TraceKind {
   /// Obfuscated Dart stack trace: `flutter symbolize`.
   dart('Dart (flutter symbolize, from split-debug-info)'),
@@ -18,21 +19,37 @@ enum TraceKind {
   native('Native C/C++ (ndk-stack, from unstripped libraries)');
 
   const TraceKind(this.label);
+
+  /// Description shown to the user.
   final String label;
 }
 
+/// Thrown when a trace cannot be symbolicated, e.g. symbols are missing.
 class TraceException implements Exception {
+  /// Creates an exception carrying [message].
   TraceException(this.message);
+
+  /// Human-readable description of what went wrong.
   final String message;
   @override
   String toString() => message;
 }
 
+/// Outcome of one symbolication run.
 class TraceResult {
+  /// Creates a result for [kind], the [command] that ran, its [output] and [exitCode].
   const TraceResult(this.kind, this.command, this.output, this.exitCode);
+
+  /// Kind of trace that was processed.
   final TraceKind kind;
+
+  /// Command line that was executed.
   final List<String> command;
+
+  /// Combined output of the command.
   final String output;
+
+  /// Exit code of the command; non-zero means failure.
   final int exitCode;
 }
 
@@ -90,6 +107,7 @@ String pickDartSymbols(String dartSymbolsDir, String traceText) {
 
 /// De-obfuscates stack traces with the symbols stored for a build.
 class Symbolicator {
+  /// Creates a symbolicator for [config] and [ledger]; [runner] executes the tools and [env] defaults to the process environment.
   Symbolicator({
     required this.config,
     required this.ledger,
@@ -97,9 +115,16 @@ class Symbolicator {
     Map<String, String>? env,
   }) : env = env ?? Platform.environment;
 
+  /// Configuration for locating tools.
   final AppConfig config;
+
+  /// Ledger used to resolve a build's stored symbol paths.
   final Ledger ledger;
+
+  /// Runs `flutter symbolize`, `retrace` or `ndk-stack`.
   final ProcessRunner runner;
+
+  /// Environment variables used to find the Android SDK/NDK.
   final Map<String, String> env;
 
   /// Kinds of trace this build has the symbols for.
