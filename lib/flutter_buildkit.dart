@@ -19,3 +19,6 @@ export 'src/services/pre_build.dart';
 export 'src/services/symbolicator.dart';
 export 'src/ui/style.dart';
 export 'src/ui/windows_console.dart';
+export 'src/config_editor.dart';
+export 'src/settings.dart';
+export 'src/ui/settings_screen.dart';

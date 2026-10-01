@@ -41,7 +41,7 @@ class Console {
     UiMode mode = UiMode.auto,
     Style? style,
     bool? interactive,
-  })  : _readLine = readLine ?? stdin.readLineSync,
+  })  : _rawReadLine = readLine ?? stdin.readLineSync,
         _write = write ?? stdout.write,
         style = style ??
             (readLine == null && write == null ? Style.detect() : Style.plain),
@@ -62,7 +62,18 @@ class Console {
     return true;
   }
 
-  final String? Function() _readLine;
+  final String? Function() _rawReadLine;
+
+  /// True once plain-mode input has run out (piped stdin, end of file).
+  /// Loops that keep asking should stop when this is set.
+  bool inputEnded = false;
+
+  String? _readLine() {
+    final line = _rawReadLine();
+    if (line == null) inputEnded = true;
+    return line;
+  }
+
   final void Function(String) _write;
 
   /// Colors and glyphs.

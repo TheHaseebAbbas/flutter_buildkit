@@ -93,6 +93,27 @@ builds whose files were deleted. It detects the trace type and runs:
 `retrace` and `ndk-stack` are found on `PATH`, through `ANDROID_HOME` /
 `ANDROID_NDK_HOME`, or via `android.retrace` / `android.ndk_stack` in the config.
 
+### Editing the settings from the menu
+
+Run `flutter_buildkit settings` (or pick **Settings** in the main menu) to
+edit `flutter_buildkit.yaml` without opening the file. Every option shows its
+current value and a preview of what it does: the folder and file name a build
+would get, the exact `flutter build` command, the pre-build steps, and so on.
+Choices list a preview next to each value, typed values are checked before
+they are accepted, and nothing is written until you choose **Save and
+reload**. The file is created from the documented template when the project
+has none, comments in an existing file are kept, and the app reloads the new
+settings straight after saving. Flavors are edited under **Flavors**. Secrets
+such as the Sentry token are not stored by this screen: use the environment
+variables.
+
+### Options asked before each build
+
+The build menu asks, per run: flavors, outputs, modes, version name and code,
+the pre-build steps, **Build options** (obfuscate and keep Dart symbols; split
+APKs per ABI when an APK is built) and extra `flutter build` arguments. The
+answers start from your config, so you only change what differs this time.
+
 ## Output layout
 
 Every build gets its own folder under `app_builds/` (set with `output_dir`):

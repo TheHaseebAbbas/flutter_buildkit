@@ -15,6 +15,7 @@ import 'services/pre_build.dart';
 import 'services/symbol_uploader.dart';
 import 'services/symbolicator.dart';
 import 'ui/console.dart';
+import 'ui/settings_screen.dart';
 import 'ui/table.dart';
 
 /// The interactive main menu.
@@ -24,20 +25,52 @@ class App {
     required this.config,
     required this.ledger,
     Console? console,
+    this.ledgerOverride,
   }) : console = console ?? Console();
 
   final FlutterProject project;
-  final AppConfig config;
-  final Ledger ledger;
+
+  /// Replaced by [_reload] after the settings are saved.
+  AppConfig config;
+  Ledger ledger;
   final Console console;
 
-  late final _manager = BuildManager(ledger);
+  /// Ledger path given on the command line; it wins over the config.
+  final String? ledgerOverride;
+
+  BuildManager get _manager => BuildManager(ledger);
+
+  /// Opens the settings editor on its own (the `settings` command).
+  Future<void> editSettings() async {
+    if (await _settings()) {
+      console.note('Settings reloaded.');
+    }
+  }
+
+  /// Runs the settings editor; on save re-reads the config (and reopens the
+  /// ledger if its path changed). True when something was saved.
+  Future<bool> _settings() async {
+    final saved = await SettingsScreen(
+            console: console, project: project, configFile: config.configFile)
+        .run();
+    if (saved == null) return false;
+    config = AppConfig.load(project.dir, explicitPath: saved);
+    final path = ledgerOverride ?? config.ledgerPath;
+    if (p.normalize(path) != p.normalize(ledger.file.path)) {
+      ledger = await Ledger.open(path);
+    }
+    console.success('Settings reloaded.');
+    _banner();
+    return true;
+  }
+
+  void _banner() => console.banner('Flutter Buildkit', [
+        'Project  ${project.appName}  (${project.dir})',
+        'Ledger   ${ledger.file.path}  (${ledger.records.length} builds)',
+      ]);
 
   Future<void> run() async {
-    console.banner('Flutter Buildkit', [
-      'Project  ${project.appName}  (${project.dir})',
-      'Ledger   ${ledger.file.path}  (${ledger.records.length} builds)',
-    ]);
+    _banner();
     while (true) {
       final choice = await console.choose(
         'Main menu',
@@ -51,6 +84,7 @@ class App {
           'Trace a crash (de-obfuscate)',
           'Delete builds',
           'Export ledger',
+          'Settings',
         ],
         hints: [
           'APK / AAB / IPA, many flavors at once',
@@ -62,6 +96,7 @@ class App {
           'Dart, R8 and native stack traces',
           'released builds keep their symbols',
           'CSV, TSV, JSON',
+          'edit flutter_buildkit.yaml with previews',
         ],
         backLabel: 'Quit',
       );
@@ -86,6 +121,8 @@ class App {
             await _delete();
           case 8:
             await _export();
+          case 9:
+            await _settings();
         }
       } on Object catch (e) {
         if (e is! BuildException &&
@@ -168,17 +205,59 @@ class App {
     if (prePicks == null) return;
     final preSteps = [for (final i in prePicks) available[i]];
 
+    // Build options, pre-set from the config for this one run.
+    final hasApk = chosenTypes.contains(ArtifactType.apk);
+    final canObfuscate = chosenModes.any((m) => m.supportsObfuscation);
+    final optionLabels = [
+      'Obfuscate and keep Dart symbols',
+      if (hasApk) 'Split APKs per ABI',
+    ];
+    final optionHints = [
+      canObfuscate
+          ? 'release/profile only; needed to trace crashes later'
+          : 'only release/profile builds can be obfuscated',
+      if (hasApk) 'one APK per CPU architecture',
+    ];
+    final optionPicks = await console.chooseMany(
+      'Build options',
+      optionLabels,
+      ticked: {
+        if (config.obfuscate) 0,
+        if (hasApk && config.splitPerAbi) 1,
+      },
+      hints: optionHints,
+    );
+    if (optionPicks == null) return;
+    final obfuscate = optionPicks.contains(0);
+    final splitPerAbi = hasApk && optionPicks.contains(1);
+    final extraText = await console.ask(
+        'Extra flutter build arguments (- for none)',
+        defaultValue: config.extraBuildArgs.isEmpty
+            ? null
+            : config.extraBuildArgs.join(' '));
+    if (extraText == null) return;
+    final extraBuildArgs = extraText == '-'
+        ? <String>[]
+        : extraText.split(RegExp(r'\s+')).where((a) => a.isNotEmpty).toList();
+
     final requests = <BuildRequest>[
       for (final flavor in chosenFlavors)
         for (final type in chosenTypes)
           for (final mode in chosenModes)
-            _request(flavor, type, mode, name, code),
+            _request(flavor, type, mode, name, code,
+                obfuscate: obfuscate,
+                splitPerAbi: splitPerAbi,
+                extraBuildArgs: extraBuildArgs),
     ];
 
     console
       ..heading('Plan')
       ..kv('App', project.appName)
       ..kv('Version', '$name+$code')
+      ..kv('Obfuscate', obfuscate ? 'yes (release/profile)' : 'no')
+      ..kv('Split ABI', splitPerAbi ? 'yes (APK)' : 'no')
+      ..kv('Extra args',
+          extraBuildArgs.isEmpty ? 'none' : extraBuildArgs.join(' '))
       ..kv(
           'Before',
           preSteps.isEmpty
@@ -228,8 +307,11 @@ class App {
     }
   }
 
-  BuildRequest _request(String? flavor, ArtifactType type, BuildMode mode,
-      String name, int code) {
+  BuildRequest _request(
+      String? flavor, ArtifactType type, BuildMode mode, String name, int code,
+      {required bool obfuscate,
+      required bool splitPerAbi,
+      required List<String> extraBuildArgs}) {
     final fc = config.flavor(flavor);
     return BuildRequest(
       type: type,
@@ -239,9 +321,9 @@ class App {
       dartDefineFile: fc.dartDefineFile,
       versionName: name,
       versionCode: code,
-      obfuscate: config.obfuscate,
-      splitPerAbi: config.splitPerAbi,
-      extraArgs: [...config.extraBuildArgs, ...fc.extraArgs],
+      obfuscate: obfuscate,
+      splitPerAbi: splitPerAbi,
+      extraArgs: [...extraBuildArgs, ...fc.extraArgs],
       packageName: type.isAndroid
           ? (fc.packageName ?? project.packageName(flavor))
           : null,

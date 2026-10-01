@@ -12,6 +12,7 @@ Usage: flutter_buildkit [options] [command]
 Commands:
   (none)   Open the interactive menu.
   init     Write a starter flutter_buildkit.yaml in the project.
+  settings Edit flutter_buildkit.yaml interactively, with previews.
   config   Show the settings in effect (secrets masked).
   list     Print the ledger as a table.
   export   Write the ledger as csv, tsv or json: export <format> [file]
@@ -115,8 +116,19 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
                 project: project,
                 config: config,
                 ledger: ledger,
-                console: Console(mode: ui))
+                console: Console(mode: ui),
+                ledgerOverride: args['ledger'] as String?)
             .run();
+      case 'settings':
+        final ui = UiMode.parse(
+            args['ui'] as String? ?? Platform.environment['FBK_UI']);
+        await App(
+                project: project,
+                config: config,
+                ledger: ledger,
+                console: Console(mode: ui),
+                ledgerOverride: args['ledger'] as String?)
+            .editSettings();
       case 'config':
         stdout.writeln(config.describe());
       case 'list':
