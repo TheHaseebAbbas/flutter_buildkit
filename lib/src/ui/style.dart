@@ -15,10 +15,15 @@ class Style {
   /// FORCE_COLOR is).
   factory Style.detect({Map<String, String>? env}) {
     env ??= Platform.environment;
-    final unicode = !Platform.isWindows || env.containsKey('WT_SESSION');
+    // The classic Windows console (PowerShell 5, cmd) often cannot draw box
+    // characters; Windows Terminal and the VS Code terminal can.
+    final unicode = !Platform.isWindows ||
+        env.containsKey('WT_SESSION') ||
+        env['TERM_PROGRAM'] == 'vscode';
     if (env.containsKey('NO_COLOR')) return Style(false, unicode: unicode);
     if (env.containsKey('FORCE_COLOR')) return Style(true, unicode: unicode);
-    final on = stdout.hasTerminal && env['TERM'] != 'dumb';
+    var on = stdout.hasTerminal && env['TERM'] != 'dumb';
+    if (on && Platform.isWindows) on = stdout.supportsAnsiEscapes;
     return Style(on, unicode: unicode);
   }
 

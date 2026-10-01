@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter_buildkit/flutter_buildkit.dart';
 import 'package:test/test.dart';
 
 List<int> b(String s) => s.codeUnits;
 
 void main() {
+  windowsTests();
   group('parseKeys', () {
     test('arrows, CSI and SS3', () {
       expect(parseKeys([27, 91, 65]), [const KeyPress(Key.up)]);
@@ -342,5 +344,27 @@ void main() {
       final c = feed(['#00 a', '#01 b', '.', 'ignored'], out);
       expect(await c.readLines('paste'), '#00 a\n#01 b');
     });
+  });
+}
+
+void windowsTests() {
+  test('WindowsConsole is a harmless no-op away from a Windows console', () {
+    final w = WindowsConsole.enable();
+    if (!Platform.isWindows) expect(w.ready, isFalse);
+    w.restore(); // must not throw
+  });
+
+  test('plain Style has no escape codes and ASCII glyphs', () {
+    const s = Style.plain;
+    expect(s.bold('x'), 'x');
+    expect(s.ok('done'), '+ done');
+    expect(s.err('bad'), 'x bad');
+    expect(s.pointer, '>');
+  });
+
+  test('colored Style wraps text and uses unicode glyphs', () {
+    const s = Style(true);
+    expect(s.green('x'), '\x1b[32mx\x1b[0m');
+    expect(s.ok('done'), contains('✔'));
   });
 }

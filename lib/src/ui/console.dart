@@ -48,13 +48,18 @@ class Console {
         interactive = interactive ??
             (readLine == null && write == null && _wantsKeys(mode));
 
+  /// Set by the entry point after [WindowsConsole.enable] succeeds.
+  static bool windowsKeysReady = false;
+
   static bool _wantsKeys(UiMode mode) {
     if (mode == UiMode.plain) return false;
     if (!stdin.hasTerminal || !stdout.hasTerminal) return false;
     if (mode == UiMode.keys) return true;
-    // Dart cannot read arrow keys from the classic Windows console, and a
-    // dumb terminal has no cursor control.
-    return !Platform.isWindows && Platform.environment['TERM'] != 'dumb';
+    if (Platform.environment['TERM'] == 'dumb') return false;
+    // Dart only receives arrow keys from the Windows console once virtual
+    // terminal input is on (see WindowsConsole); otherwise use numbers.
+    if (Platform.isWindows) return windowsKeysReady;
+    return true;
   }
 
   final String? Function() _readLine;
@@ -96,8 +101,9 @@ class Console {
   void banner(String title, [List<String> bannerLines = const []]) {
     // Long paths are cut from the left so the box fits the terminal.
     final maxInner = (_columns - 6).clamp(30, 200);
-    String fit(String l) =>
-        l.length <= maxInner ? l : '…${l.substring(l.length - maxInner + 1)}';
+    String fit(String l) => l.length <= maxInner
+        ? l
+        : '${style.unicode ? '…' : '...'}${l.substring(l.length - maxInner + (style.unicode ? 1 : 3))}';
     final lines = [for (final l in bannerLines) fit(l)];
     final all = [title, ...lines];
     final inner = all.map((l) => l.length).reduce((a, b) => a > b ? a : b);

@@ -50,10 +50,13 @@ Every list works two ways, so you are never stuck:
 | Digits, `,` and `-` | Type row numbers, then Enter |
 | Esc or `q` | Back / cancel; Ctrl-C quits |
 
-Arrow keys are used automatically on macOS and Linux terminals. Piped input,
-`TERM=dumb` and Windows use plain numbered questions (numbers, ranges, or the
-start of an option's name). Force a mode with `--ui plain` or `--ui keys`
-(or `FBK_UI=plain`). Colors follow the terminal and honour `NO_COLOR`.
+Arrow keys are used automatically on macOS, Linux and Windows (PowerShell,
+cmd, Windows Terminal; the app switches on the console's ANSI mode). If that
+is not possible, or input is piped, or `TERM=dumb`, plain numbered questions
+are used (numbers, ranges, or the start of an option's name). Force a mode with `--ui plain` or `--ui keys`
+(or `FBK_UI=plain`). Colors follow the terminal and honour `NO_COLOR`. The
+classic Windows console gets ASCII borders; Windows Terminal and the VS Code
+terminal get box drawing.
 
 | Item | What it does |
 |---|---|

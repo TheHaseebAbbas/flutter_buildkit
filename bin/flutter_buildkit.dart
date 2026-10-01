@@ -49,6 +49,33 @@ Future<int> main(List<String> arguments) async {
     return 0;
   }
 
+  // Windows: switch on ANSI input/output so arrows and colors work in
+  // PowerShell and cmd. Restored on exit.
+  final windows = WindowsConsole.enable();
+  Console.windowsKeysReady = windows.ready;
+  // Ctrl-C raises SIGINT even in raw mode: put the terminal back first.
+  final sigint = ProcessSignal.sigint.watch().listen((_) {
+    try {
+      stdout.write('\x1b[?25h\n');
+      if (stdin.hasTerminal) {
+        stdin.echoMode = true;
+        stdin.lineMode = true;
+      }
+    } on Object {
+      // Best effort while exiting.
+    }
+    windows.restore();
+    exit(130);
+  });
+  try {
+    return await _run(args, parser);
+  } finally {
+    await sigint.cancel();
+    windows.restore();
+  }
+}
+
+Future<int> _run(ArgResults args, ArgParser parser) async {
   final projectDir = p.normalize(p.absolute(args['project'] as String));
   final project = FlutterProject(projectDir);
   final command = args.rest.isEmpty ? null : args.rest.first;
