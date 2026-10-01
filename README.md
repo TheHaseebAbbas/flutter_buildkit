@@ -25,7 +25,7 @@ dart run flutter_build_ledger init   # optional: write flutter_build_ledger.yaml
 dart run flutter_build_ledger        # open the menu
 ```
 
-Add `builds/` and `flutter_build_ledger.yaml` to that project's `.gitignore`.
+Add `app_builds/` and `flutter_build_ledger.yaml` to that project's `.gitignore`.
 To work on this repo itself, clone it and run `dart pub get`, then
 `dart run bin/flutter_build_ledger.dart -C /path/to/flutter/project`.
 
@@ -48,17 +48,17 @@ Other commands: `init` (write a starter config), `list`, `export <csv|tsv|json> 
 ## Output layout
 
 ```
-builds/<app>/<flavor>/<mode>/<versionName>+<versionCode>_<yyyyMMdd-HHmmss>/
+app_builds/<app>/<flavor>/<mode>/<versionName>+<versionCode>_<yyyyMMdd-HHmmss>/
     <app>-<flavor>-<mode>-<version>.aab
     build_info.json
     symbols/dart/        # --split-debug-info output (obfuscated builds)
     symbols/mapping.txt  # R8 mapping, when produced
     symbols/dSYMs/       # iOS
-builds/ledger.json
+app_builds/ledger.json
 ```
 
 Projects without flavors use `default`. Names are sanitised for every OS. The
-timestamp is local time. The root defaults to `builds/` inside the Flutter
+timestamp is local time. The root defaults to `app_builds/` inside the Flutter
 project (git-ignore it) and is set with `output_dir`.
 
 ## Why the ledger is JSON
@@ -69,7 +69,7 @@ without loss and can be edited by hand. CSV and TSV flatten it to text, so they
 are export formats: **CSV** (RFC 4180, opens in Excel/Sheets) and **TSV**
 (tabs and newlines escaped as `\t` and `\n`). The ledger is rewritten
 atomically and the previous copy is kept as `ledger.json.bak`. Paths inside it
-are relative to the ledger folder, so the whole `builds/` folder can be moved.
+are relative to the ledger folder, so the whole `app_builds/` folder can be moved.
 
 ## Configuration
 

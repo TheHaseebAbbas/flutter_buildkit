@@ -92,7 +92,7 @@ class AppConfig {
   const AppConfig({
     required this.projectDir,
     this.configFile,
-    this.outputDir = 'builds',
+    this.outputDir = 'app_builds',
     this.ledgerFile,
     this.flutter = const ['flutter'],
     this.obfuscate = true,
@@ -191,7 +191,7 @@ class AppConfig {
     return AppConfig(
       projectDir: projectDir,
       configFile: configFile,
-      outputDir: y['output_dir'] as String? ?? 'builds',
+      outputDir: y['output_dir'] as String? ?? 'app_builds',
       ledgerFile: y['ledger'] as String?,
       flutter: _command(env['FBL_FLUTTER'] ?? y['flutter'], const ['flutter']),
       obfuscate: y['obfuscate'] as bool? ?? true,
@@ -240,8 +240,8 @@ class AppConfig {
 # prefer the environment variables noted below for credentials.
 
 # Where builds and the ledger are stored (relative to the Flutter project).
-output_dir: builds
-# ledger: builds/ledger.json
+output_dir: app_builds
+# ledger: app_builds/ledger.json
 
 # Command used to run Flutter ("fvm flutter" works too). Env: FBL_FLUTTER
 flutter: flutter

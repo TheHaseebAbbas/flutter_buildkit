@@ -33,7 +33,7 @@ void main() {
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('fbl_ledger_');
-    ledger = await Ledger.open(p.join(tmp.path, 'builds', 'ledger.json'));
+    ledger = await Ledger.open(p.join(tmp.path, 'app_builds', 'ledger.json'));
   });
   tearDown(() => tmp.delete(recursive: true));
 

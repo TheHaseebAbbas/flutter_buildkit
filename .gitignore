@@ -9,5 +9,5 @@ flutter_build_ledger.yaml
 .env
 
 # Default output folder when run inside this repo
-builds/
+app_builds/
 pubspec.lock

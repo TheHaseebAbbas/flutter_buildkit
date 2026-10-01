@@ -109,9 +109,9 @@ android {
       expect(c.play.serviceAccountJson, '/k.json');
     });
 
-    test('defaults: builds/ledger.json inside the project', () {
+    test('defaults: app_builds/ledger.json inside the project', () {
       final c = AppConfig.fromYaml('/proj', const {});
-      expect(c.ledgerPath, '/proj/builds/ledger.json');
+      expect(c.ledgerPath, '/proj/app_builds/ledger.json');
       expect(c.flutter, ['flutter']);
     });
 
