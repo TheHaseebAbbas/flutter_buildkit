@@ -48,13 +48,15 @@ class App {
     }
   }
 
-  /// Runs the settings editor; on save re-reads the config (and reopens the
-  /// ledger if its path changed). True when something was saved.
-  Future<bool> _settings() async {
+  /// Reads the project and writes a config from what it finds.
+  Future<void> setUpFromProject() async {
     final saved = await SettingsScreen(
             console: console, project: project, configFile: config.configFile)
-        .run();
-    if (saved == null) return false;
+        .autoConfigure();
+    if (saved != null) await _reload(saved);
+  }
+
+  Future<void> _reload(String saved) async {
     config = AppConfig.load(project.dir, explicitPath: saved);
     final path = ledgerOverride ?? config.ledgerPath;
     if (p.normalize(path) != p.normalize(ledger.file.path)) {
@@ -62,6 +64,16 @@ class App {
     }
     console.success('Settings reloaded.');
     _banner();
+  }
+
+  /// Runs the settings editor; on save re-reads the config (and reopens the
+  /// ledger if its path changed). True when something was saved.
+  Future<bool> _settings() async {
+    final saved = await SettingsScreen(
+            console: console, project: project, configFile: config.configFile)
+        .run();
+    if (saved == null) return false;
+    await _reload(saved);
     return true;
   }
 
@@ -86,6 +98,7 @@ class App {
           'Delete builds',
           'Export ledger',
           'Settings',
+          'Set up from this project',
         ],
         hints: [
           'APK / AAB / IPA, many flavors at once',
@@ -98,6 +111,7 @@ class App {
           'released builds keep their symbols',
           'CSV, TSV, JSON',
           'edit flutter_buildkit.yaml with previews',
+          'detect flavors, entry points, tools; write the config',
         ],
         backLabel: 'Quit',
       );
@@ -124,6 +138,8 @@ class App {
             await _export();
           case 9:
             await _settings();
+          case 10:
+            await setUpFromProject();
         }
       } on Object catch (e) {
         if (e is! BuildException &&

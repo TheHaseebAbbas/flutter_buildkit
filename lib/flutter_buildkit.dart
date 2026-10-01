@@ -23,3 +23,4 @@ export 'src/config_editor.dart';
 export 'src/settings.dart';
 export 'src/ui/settings_screen.dart';
 export 'src/entry_points.dart';
+export 'src/auto_config.dart';

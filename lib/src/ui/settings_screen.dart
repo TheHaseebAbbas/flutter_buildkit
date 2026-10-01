@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../auto_config.dart';
 import '../config.dart';
 import '../config_editor.dart';
 import '../flutter_project.dart';
@@ -79,6 +80,7 @@ class SettingsScreen {
         'Entry points',
         'Flavors',
         'Review changes',
+        'Auto-configure from this project',
         dirty ? 'Save and reload' : 'Save and reload (no changes)',
       ];
       final hints = [
@@ -87,6 +89,7 @@ class SettingsScreen {
         _entrySummary(const ['entry_points']),
         'target, dart defines, package name, Firebase, Sentry per flavor',
         'what differs from the file on disk',
+        'read flavors, entry points, tools and files; tick what to apply',
         savePath,
       ];
       final choice = await console.choose('Settings', options,
@@ -108,6 +111,8 @@ class SettingsScreen {
         await _flavors();
       } else if (choice == defs.length + 2) {
         _review();
+      } else if (choice == defs.length + 3) {
+        if (await _autoConfigure()) return savePath;
       } else {
         if (await _save()) return savePath;
       }
@@ -417,15 +422,122 @@ class SettingsScreen {
     }
   }
 
-  Future<bool> _save() async {
+  /// Runs [_autoConfigure] on its own (the `autoconfig` command and the main
+  /// menu). Returns the saved path or null.
+  Future<String?> autoConfigure() async =>
+      await _autoConfigure() ? savePath : null;
+
+  // ---- auto configuration -----------------------------------------------------
+
+  /// Reads the project, lets the user tick what to apply (with a preview)
+  /// and writes the file. True when the file was written.
+  Future<bool> _autoConfigure() async {
+    console
+      ..heading('Auto-configure')
+      ..note('Reading ${project.dir} ...');
+    final all = suggestConfig(project);
+    final fresh = <Suggestion>[];
+    var same = 0;
+    for (final s in all) {
+      final now = editor.raw(s.path);
+      final wanted = s.value;
+      final equal = now is Iterable && wanted is Iterable
+          ? '${now.toList()}' == '${wanted.toList()}'
+          : '$now' == '$wanted';
+      if (now != null && equal) {
+        same++;
+      } else {
+        fresh.add(s);
+      }
+    }
+    if (fresh.isEmpty) {
+      console.out('Nothing to change: ${all.length} detected '
+          'setting${all.length == 1 ? '' : 's'} already match the file.');
+      return false;
+    }
+    if (same > 0) console.note('$same detected settings already match.');
+
+    String show(Object? v) => v is List ? '[${v.join(', ')}]' : '$v';
+    final labels = [for (final s in fresh) '${s.key} = ${show(s.value)}'];
+    // With no file yet everything is new. With one, keys that are not set
+    // are ticked, and changing a value you already set is opt-in.
+    final hasFile = File(savePath).existsSync();
+    bool isSet(Suggestion s) => hasFile && editor.raw(s.path) != null;
+    final hints = [
+      for (final s in fresh)
+        isSet(s)
+            ? '${s.reason}; file has ${show(editor.raw(s.path))}'
+            : s.reason,
+    ];
+    final picks = await console.chooseMany('Detected settings', labels,
+        ticked: {
+          for (var i = 0; i < fresh.length; i++)
+            if (!isSet(fresh[i])) i,
+        },
+        hints: hints);
+    if (picks == null || picks.isEmpty) return false;
+
+    var next = editor;
+    try {
+      for (final i in picks) {
+        next = next.set(fresh[i].path, fresh[i].value);
+      }
+      final draft = _build(next);
+      final ctx = _context;
+      console.out('');
+      console.out(console.style.bold('Result'));
+      final layout =
+          globalSettings().firstWhere((d) => d.key == 'output_layout');
+      for (final line in layout.preview(draft, ctx).take(3)) {
+        console.out('  $line');
+      }
+      final flavors = project.flavors;
+      final command = globalSettings().firstWhere((d) => d.key == 'flutter');
+      console.out('  ${command.preview(draft, ctx).first}');
+      if (flavors.length > 1) {
+        console.note(
+            '  (shown for ${flavors.first}; ${flavors.length - 1} more '
+            'flavor${flavors.length == 2 ? '' : 's'} configured the same way)');
+      }
+    } on ConfigException catch (e) {
+      console.error('$e');
+      return false;
+    }
+    if (!await console.confirm('Write $savePath and reload?',
+        defaultValue: true)) {
+      return false;
+    }
+    editor = next;
+    final saved = await _save(confirm: false);
+    if (saved) await _offerGitignore();
+    return saved;
+  }
+
+  Future<void> _offerGitignore() async {
+    final missing = missingGitignoreEntries(project,
+        outputDir: _build(editor).outputDir,
+        configFileName: p.basename(savePath));
+    if (missing.isEmpty) return;
+    if (await console.confirm(
+        'Add ${missing.join(', ')} to .gitignore? (builds are large, the '
+        'config can hold secrets)',
+        defaultValue: true)) {
+      addToGitignore(project, missing);
+      console.success('.gitignore updated');
+    }
+  }
+
+  Future<bool> _save({bool confirm = true}) async {
     if (!dirty && File(savePath).existsSync()) {
       console.out('Nothing to save.');
       return false;
     }
-    _review();
-    if (!await console.confirm('Write $savePath and reload?',
-        defaultValue: true)) {
-      return false;
+    if (confirm) {
+      _review();
+      if (!await console.confirm('Write $savePath and reload?',
+          defaultValue: true)) {
+        return false;
+      }
     }
     try {
       _build(editor);

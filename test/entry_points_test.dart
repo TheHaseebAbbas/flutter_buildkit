@@ -51,7 +51,7 @@ void main() {
         },
       });
       expect(entryPointsFor(c, project, 'dev'), [
-        const EntryPoint('main', 'lib/main_dev.dart'),
+        const EntryPoint(null, 'lib/main_dev.dart'),
         const EntryPoint('admin', 'lib/admin.dart'),
       ]);
       // Without a flavor, a path that needs one is left out.
@@ -71,7 +71,7 @@ void main() {
       expect(entryPointsFor(c, project, 'dev'),
           [const EntryPoint('kiosk', 'lib/kiosk_dev.dart')]);
       expect(entryPointsFor(c, project, 'prod'),
-          [const EntryPoint('main', 'lib/main.dart')]);
+          [const EntryPoint(null, 'lib/main.dart')]);
     });
 
     test('a flavor keeps its own main plus the detected extras', () {
@@ -176,7 +176,7 @@ void main() {
       'lib/main_admin.dart',
       'y',
       '0', // back
-      '29', // Save and reload
+      '30', // Save and reload
       'y',
     ];
     final screen = SettingsScreen(

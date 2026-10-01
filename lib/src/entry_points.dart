@@ -19,6 +19,9 @@ class EntryPoint {
   String get label => name ?? '(default)';
 
   @override
+  String toString() => 'EntryPoint($name, $path)';
+
+  @override
   bool operator ==(Object other) =>
       other is EntryPoint && other.name == name && other.path == path;
 
@@ -60,15 +63,14 @@ List<EntryPoint> entryPointsFor(
   final fc = config.flavor(flavor);
   if (fc.entryPoints.isNotEmpty) return _list(fc.entryPoints, flavor);
   if (config.entryPoints.isNotEmpty) {
-    final all = _list(config.entryPoints, flavor);
     // A path that needs a flavor cannot be built without one.
-    return flavor == null
-        ? [
-            for (final e in all)
-              if (!(config.entryPoints[e.name]?.contains('{flavor}') ?? false))
-                e,
-          ]
-        : all;
+    final usable = flavor == null
+        ? {
+            for (final e in config.entryPoints.entries)
+              if (!e.value.contains('{flavor}')) e.key: e.value,
+          }
+        : config.entryPoints;
+    return _list(usable, flavor);
   }
   final defaultTarget = fc.target ?? project.defaultTarget(flavor);
   return [
@@ -78,7 +80,10 @@ List<EntryPoint> entryPointsFor(
   ];
 }
 
+/// An entry point named `main` or `default` is the default one: it keeps the
+/// plain folder and file names.
 List<EntryPoint> _list(Map<String, String> map, String? flavor) => [
       for (final e in map.entries)
-        EntryPoint(e.key, e.value.replaceAll('{flavor}', flavor ?? 'default')),
+        EntryPoint(e.key == 'main' || e.key == 'default' ? null : e.key,
+            e.value.replaceAll('{flavor}', flavor ?? 'default')),
     ];

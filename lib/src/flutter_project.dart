@@ -55,6 +55,9 @@ class FlutterProject {
     return false;
   }
 
+  /// True when [name] is in `dependencies` or `dev_dependencies`.
+  bool hasDependency(String name) => _hasDependency(name);
+
   /// `build_runner` is a dependency, so generated code may need refreshing.
   bool get usesBuildRunner => _hasDependency('build_runner');
 

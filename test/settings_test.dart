@@ -177,7 +177,7 @@ void main() {
       // Menu rows: 1 output_dir, 2 output_layout, ... 6 obfuscate.
       final project = FlutterProject(tmp.path);
       final defs = globalSettings();
-      final save = defs.length + 4;
+      final save = defs.length + 5;
       final input = [
         '6',
         'false',

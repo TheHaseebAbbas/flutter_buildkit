@@ -120,6 +120,31 @@ ledger (`entry_point` column), so builds never overwrite each other. Put
 default entry point keeps the plain names. Entry points can also be edited in
 the settings screen.
 
+### Set up from the project
+
+`flutter_buildkit autoconfig` (or **Set up from this project** in the menu)
+reads the project and writes `flutter_buildkit.yaml` from what it finds, then
+reloads the app. It detects:
+
+| Found | Becomes |
+|---|---|
+| Gradle product flavors, Xcode schemes | the flavors, with `lib/main_<flavor>.dart` as `target` |
+| `config/<flavor>.json`, `env/<flavor>.json`, ... | `dart_define_file` |
+| `applicationId` (and suffix) per flavor | `package_name` |
+| `google-services.json` | `firebase_app_id` (when `firebase_crashlytics` is used) |
+| extra `lib/main_*.dart` files | `entry_points` |
+| `build_runner`, `l10n.yaml` / `generate: true` | `pre_build.build_runner`, `pre_build.gen_l10n` |
+| `firebase_crashlytics`, `sentry_flutter`, `sentry.properties` | `crashlytics.enabled`, `sentry.enabled`, org, project, url |
+| `.fvmrc` / `.fvm/` | `flutter: fvm flutter` |
+| `json_key_file` in `fastlane/Appfile` | `play.service_account_json` (the path only) |
+| flavors or not | `output_layout`: `by-flavor`, or `{mode}/{version}-{datetime}` without flavors |
+
+You tick what to apply, with the reason shown next to each value. Values you
+already set in an existing file are not ticked, so they are never overwritten
+by accident. It also offers to add the output folder and the config file to
+`.gitignore`. Secrets are never read into the file: the Sentry auth token
+stays out, and for Play only the key's path is used.
+
 ### Editing the settings from the menu
 
 Run `flutter_buildkit settings` (or pick **Settings** in the main menu) to
