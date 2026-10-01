@@ -93,6 +93,33 @@ builds whose files were deleted. It detects the trace type and runs:
 `retrace` and `ndk-stack` are found on `PATH`, through `ANDROID_HOME` /
 `ANDROID_NDK_HOME`, or via `android.retrace` / `android.ndk_stack` in the config.
 
+### Several entry points (main files)
+
+A project with more than one `main` (an admin app, a kiosk mode, a demo) can
+build them all, with or without flavors. Without any config, extra
+`lib/main_*.dart` files are found automatically (`main_admin.dart` becomes the
+entry point `admin`; a `main_<flavor>.dart` stays that flavor's own main). To
+choose the names and paths yourself:
+
+```yaml
+entry_points:                       # shared by all flavors
+  main: lib/main_{flavor}.dart      # {flavor} is filled in per flavor
+  admin: lib/main_admin.dart
+flavors:
+  prod:
+    entry_points:                   # this flavor has its own list
+      main: lib/main_prod.dart
+      kiosk: lib/main_prod_kiosk.dart
+```
+
+The build menu then asks which entry points to build and builds every
+combination of flavor, entry point, output and mode. A named entry point is
+added to the folder and file names (`..._070509-admin.aab`) and stored in the
+ledger (`entry_point` column), so builds never overwrite each other. Put
+`{entry}` in `output_layout` or `file_name` to place the name yourself. The
+default entry point keeps the plain names. Entry points can also be edited in
+the settings screen.
+
 ### Editing the settings from the menu
 
 Run `flutter_buildkit settings` (or pick **Settings** in the main menu) to
@@ -206,6 +233,8 @@ line options win for their own settings.
 | `output_dir` | `app_builds` | Root of the build folders and the ledger, relative to the project. |
 | `output_layout` | `by-flavor` | Folder layout: a preset id or a template (see Output layout). |
 | `file_name` | `{app}-{flavor}-{mode}-{version}-{datetime}` | Artifact file name without extension. |
+| `entry_points` | detected | Named Dart entry points shared by all flavors (`name: path`). `{flavor}` in a path is replaced by the flavor. |
+| `flavors.<name>.entry_points` | none | Entry points of one flavor; replaces the shared list for it. |
 | `ledger` | `<output_dir>/ledger.json` | Ledger file path. |
 | `flutter` | `flutter` | Command that runs Flutter, e.g. `fvm flutter`. |
 | `obfuscate` | `true` | Obfuscate profile/release builds and keep Dart symbols. |

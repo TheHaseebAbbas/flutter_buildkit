@@ -14,6 +14,7 @@ class FlavorConfig {
     this.firebaseAppId,
     this.sentryProject,
     this.extraArgs = const [],
+    this.entryPoints = const {},
   });
 
   /// Entry point, e.g. `lib/main_dev.dart`.
@@ -32,7 +33,13 @@ class FlavorConfig {
   final String? sentryProject;
   final List<String> extraArgs;
 
+  /// Named entry points for this flavor (`name: path`). When set they
+  /// replace [target] and the top-level `entry_points`.
+  final Map<String, String> entryPoints;
+
   factory FlavorConfig.fromYaml(Map<Object?, Object?> y) => FlavorConfig(
+        entryPoints: AppConfig.parseEntryPoints(
+            y['entry_points'], 'flavors.*.entry_points'),
         target: y['target'] as String?,
         dartDefineFile: y['dart_define_file'] as String?,
         packageName: y['package_name'] as String?,
@@ -112,6 +119,7 @@ class AppConfig {
     this.outputDir = 'app_builds',
     this.outputLayout,
     this.fileName,
+    this.entryPoints = const {},
     this.ledgerFile,
     this.flutter = const ['flutter'],
     this.obfuscate = true,
@@ -142,6 +150,10 @@ class AppConfig {
 
   /// Artifact file name template, without extension.
   final String? fileName;
+
+  /// Named entry points shared by all flavors (`name: path`). A path may use
+  /// `{flavor}`, e.g. `lib/main_{flavor}.dart`.
+  final Map<String, String> entryPoints;
 
   /// Ledger path; defaults to `<outputDir>/ledger.json`.
   final String? ledgerFile;
@@ -247,6 +259,7 @@ class AppConfig {
       outputDir: y['output_dir'] as String? ?? 'app_builds',
       outputLayout: _layout(y['output_layout']),
       fileName: _fileName(y['file_name']),
+      entryPoints: parseEntryPoints(y['entry_points'], 'entry_points'),
       ledgerFile: y['ledger'] as String?,
       flutter: _command(env['FBK_FLUTTER'] ?? y['flutter'], const ['flutter']),
       obfuscate: y['obfuscate'] as bool? ?? true,
@@ -311,6 +324,29 @@ class AppConfig {
     return '$v';
   }
 
+  /// Reads `entry_points:` (`name: path`), checking names and paths.
+  static Map<String, String> parseEntryPoints(Object? v, String where) {
+    if (v == null) return const {};
+    if (v is! Map) {
+      throw ConfigException('$where must map a name to a Dart file, e.g. '
+          'admin: lib/main_admin.dart.');
+    }
+    final out = <String, String>{};
+    for (final e in v.entries) {
+      final name = '${e.key}';
+      if (!RegExp(r'^[A-Za-z][A-Za-z0-9_-]*$').hasMatch(name)) {
+        throw ConfigException('$where: "$name" is not a valid name (letters, '
+            'digits, "_" or "-", starting with a letter).');
+      }
+      final path = e.value;
+      if (path is! String || path.trim().isEmpty) {
+        throw ConfigException('$where.$name needs a path to a Dart file.');
+      }
+      out[name] = path.trim().replaceAll(r'\', '/');
+    }
+    return out;
+  }
+
   static Map<Object?, Object?> _map(Object? v) =>
       v is Map ? v.cast<Object?, Object?>() : const {};
 
@@ -333,6 +369,9 @@ class AppConfig {
       'output_dir': outputRoot,
       'output_layout': effectiveLayout,
       'file_name': fileName ?? BuildPaths.defaultFileName,
+      'entry_points': entryPoints.isEmpty
+          ? '(none; detected from lib/main*.dart)'
+          : entryPoints.entries.map((e) => '${e.key}=${e.value}').join(' '),
       'ledger': ledgerPath,
       'flutter': flutter.join(' '),
       'obfuscate': '$obfuscate',
@@ -366,6 +405,8 @@ class AppConfig {
         if (f.firebaseAppId != null) 'firebase_app_id=${f.firebaseAppId}',
         if (f.sentryProject != null) 'sentry_project=${f.sentryProject}',
         if (f.extraArgs.isNotEmpty) 'extra_args=${f.extraArgs.join(' ')}',
+        if (f.entryPoints.isNotEmpty)
+          'entry_points=${f.entryPoints.entries.map((e) => '${e.key}:${e.value}').join(',')}',
       ].join(' ');
     }
     final width =
@@ -397,6 +438,16 @@ output_layout: by-flavor
 file_name: "{app}-{flavor}-{mode}-{version}-{datetime}"
 # ledger: app_builds/ledger.json
 
+# Several Dart entry points (main files) to build. Leave out to build
+# lib/main.dart (or lib/main_<flavor>.dart); extra lib/main_*.dart files are
+# offered automatically. Each name is added to the artifact and folder names.
+# {flavor} in a path is replaced by the flavor being built. A flavor can list
+# its own under flavors.<name>.entry_points.
+# entry_points:
+#   main: lib/main.dart
+#   admin: lib/main_admin.dart
+#   kiosk: lib/main_{flavor}_kiosk.dart
+
 # Command used to run Flutter ("fvm flutter" works too). Env: FBK_FLUTTER
 flutter: flutter
 
@@ -422,6 +473,7 @@ flavors:
   #   package_name: com.example.app.dev
   #   firebase_app_id: 1:1234567890:android:abc123
   #   sentry_project: my-app-dev
+  #   entry_points: {main: lib/main_dev.dart, admin: lib/admin_dev.dart}
   # prod:
   #   target: lib/main_prod.dart
   #   package_name: com.example.app

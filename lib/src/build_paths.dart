@@ -44,6 +44,7 @@ class BuildNaming {
     required this.versionCode,
     required this.time,
     required this.type,
+    this.entry,
   });
 
   final String appName;
@@ -55,6 +56,9 @@ class BuildNaming {
   final int versionCode;
   final DateTime time;
   final ArtifactType type;
+
+  /// Name of the entry point (e.g. `admin`); null for the default one.
+  final String? entry;
 }
 
 class PathTemplateException implements Exception {
@@ -69,7 +73,9 @@ class PathTemplateException implements Exception {
 /// Tokens: `{app}`, `{flavor}`, `{mode}`, `{versionName}`, `{versionCode}`,
 /// `{version}` (= `<versionName>-b<versionCode>`), `{datetime}`
 /// (`yyyyMMdd-HHmmss`), `{date}`, `{time}`, `{year}`, `{month}` and `{type}`
-/// (`apk`, `aab`, `ipa`).
+/// (`apk`, `aab`, `ipa`) and `{entry}` (name of a non-default entry point,
+/// empty otherwise). A template without `{entry}` gets `-<entry>` appended
+/// when a named entry point is built, so builds never share a name.
 class PathTemplate {
   PathTemplate._(this.source);
 
@@ -86,6 +92,7 @@ class PathTemplate {
     'year',
     'month',
     'type',
+    'entry',
   ];
 
   final String source;
@@ -143,10 +150,14 @@ class PathTemplate {
       'year': t.year.toString().padLeft(4, '0'),
       'month': two(t.month),
       'type': n.type.extension,
+      'entry': n.entry == null ? '' : BuildPaths.sanitize(n.entry!),
     };
     var out = source.replaceAllMapped(
         RegExp(r'\{(\w+)\}'), (m) => values[m.group(1)] ?? '');
-    if (dropEmptyFlavor && n.flavor == null) {
+    if (n.entry != null && !source.contains('{entry}')) {
+      out = '$out-${BuildPaths.sanitize(n.entry!)}';
+    }
+    if (dropEmptyFlavor && (n.flavor == null || source.contains('{entry}'))) {
       // "app--release" becomes "app-release".
       out = out.replaceAllMapped(RegExp(r'([-_.])\1+'), (m) => m.group(1)!);
     }

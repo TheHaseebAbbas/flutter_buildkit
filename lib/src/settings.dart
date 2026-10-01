@@ -34,6 +34,7 @@ class PreviewContext {
     required this.versionName,
     required this.versionCode,
     this.flavor,
+    this.entry,
     DateTime? now,
   }) : now = now ?? DateTime.now();
 
@@ -43,7 +44,19 @@ class PreviewContext {
 
   /// An example flavor, or null for a project without flavors.
   final String? flavor;
+
+  /// An example named entry point, or null for the default one.
+  final String? entry;
   final DateTime now;
+
+  PreviewContext withEntry(String? name, {String? flavor}) => PreviewContext(
+        appName: appName,
+        versionName: versionName,
+        versionCode: versionCode,
+        flavor: flavor ?? this.flavor,
+        entry: name,
+        now: now,
+      );
 
   BuildNaming naming(BuildMode mode, ArtifactType type) => BuildNaming(
         appName: appName,
@@ -53,6 +66,7 @@ class PreviewContext {
         versionCode: versionCode,
         time: now,
         type: type,
+        entry: entry,
       );
 }
 
@@ -115,7 +129,7 @@ List<String> _layoutPreview(AppConfig c, PreviewContext x) {
 }
 
 List<String> _commandPreview(AppConfig c, PreviewContext x,
-    {String? flavor, String? note}) {
+    {String? flavor, String? note, String? target}) {
   final f = flavor ?? x.flavor;
   final flavorConfig = f == null ? const FlavorConfig() : c.flavor(f);
   final type = c.splitPerAbi ? ArtifactType.apk : ArtifactType.aab;
@@ -123,7 +137,7 @@ List<String> _commandPreview(AppConfig c, PreviewContext x,
     type: type,
     mode: BuildMode.release,
     flavor: f,
-    target: flavorConfig.target,
+    target: target ?? flavorConfig.target,
     dartDefineFile: flavorConfig.dartDefineFile,
     versionName: x.versionName,
     versionCode: x.versionCode,
@@ -499,5 +513,20 @@ List<SettingDef> flavorSettings(String flavor) {
       current: (c) => _list(c.flavor(flavor).extraArgs),
       preview: command,
     ),
+  ];
+}
+
+/// What building the entry point [name] (a Dart file at [path]) does.
+List<String> entryPointPreview(
+    AppConfig c, PreviewContext x, String name, String path,
+    {String? flavor}) {
+  final ctx = x.withEntry(name, flavor: flavor);
+  final target = path.replaceAll('{flavor}', ctx.flavor ?? 'default');
+  final layout = _layoutPreview(c, ctx);
+  return [
+    'builds $target as "$name"',
+    ..._commandPreview(c, ctx, flavor: flavor, target: target),
+    'folder    ${layout[1].substring(10)}',
+    'artifact  ${layout[2].substring(10)}',
   ];
 }

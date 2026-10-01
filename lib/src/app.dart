@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'config.dart';
+import 'entry_points.dart';
 import 'flutter_project.dart';
 import 'ledger/exporter.dart';
 import 'ledger/ledger.dart';
@@ -159,6 +160,59 @@ class App {
       chosenFlavors = [null];
     }
 
+    // Entry points (main files) per flavor. Asked only when there is more
+    // than one to choose from.
+    final entryOptions = {
+      for (final f in chosenFlavors) f: entryPointsFor(config, project, f),
+    };
+    final names = <String?>[];
+    for (final list in entryOptions.values) {
+      for (final e in list) {
+        if (!names.contains(e.name)) names.add(e.name);
+      }
+    }
+    var chosenNames = names;
+    if (names.length > 1) {
+      final labels = [for (final n in names) n ?? '(default)'];
+      final hints = [
+        for (final n in names)
+          {
+            for (final f in chosenFlavors)
+              if (entryOptions[f]!.where((e) => e.name == n).firstOrNull
+                  case final e?)
+                '${f ?? 'default'}: ${e.path ?? 'lib/main.dart'}',
+          }.join('  '),
+      ];
+      final picks = await console.chooseMany(
+          'Entry points', [for (final l in labels) l],
+          ticked: {0}, hints: hints);
+      if (picks == null || picks.isEmpty) return;
+      chosenNames = [for (final i in picks) names[i]];
+    }
+    final entriesFor = {
+      for (final f in chosenFlavors)
+        f: [
+          for (final e in entryOptions[f]!)
+            if (chosenNames.contains(e.name)) e,
+        ],
+    };
+    for (final f in chosenFlavors) {
+      for (final e in entriesFor[f]!) {
+        final path = e.path;
+        if (path != null && !File(p.join(project.dir, path)).existsSync()) {
+          console.warn('${f ?? 'default'} ${e.label}: $path not found; '
+              'Flutter will report the error.');
+        }
+      }
+      for (final n in chosenNames) {
+        if (!entriesFor[f]!.any((e) => e.name == n)) {
+          console
+              .note('${f ?? 'default'} has no entry point "${n ?? 'default'}"; '
+                  'skipped.');
+        }
+      }
+    }
+
     final types = ArtifactType.values
         .where((t) => t != ArtifactType.ipa || Platform.isMacOS)
         .toList();
@@ -233,7 +287,7 @@ class App {
     final extraText = await console.ask(
         'Extra flutter build arguments (- for none)',
         defaultValue: config.extraBuildArgs.isEmpty
-            ? null
+            ? '-'
             : config.extraBuildArgs.join(' '));
     if (extraText == null) return;
     final extraBuildArgs = extraText == '-'
@@ -242,12 +296,13 @@ class App {
 
     final requests = <BuildRequest>[
       for (final flavor in chosenFlavors)
-        for (final type in chosenTypes)
-          for (final mode in chosenModes)
-            _request(flavor, type, mode, name, code,
-                obfuscate: obfuscate,
-                splitPerAbi: splitPerAbi,
-                extraBuildArgs: extraBuildArgs),
+        for (final entry in entriesFor[flavor] ?? const <EntryPoint>[])
+          for (final type in chosenTypes)
+            for (final mode in chosenModes)
+              _request(flavor, entry, type, mode, name, code,
+                  obfuscate: obfuscate,
+                  splitPerAbi: splitPerAbi,
+                  extraBuildArgs: extraBuildArgs),
     ];
 
     console
@@ -267,7 +322,7 @@ class App {
     for (final r in requests) {
       console.out('  ${console.style.cyan(console.style.bullet)} '
           '${(r.flavor ?? 'default').padRight(12)} ${r.mode.name.padRight(8)} '
-          '${r.type.name}'
+          '${r.type.name}${r.entryPoint == null ? '' : '  [${r.entryPoint}]'}'
           '${r.willObfuscate ? '' : console.style.dim('  (not obfuscated: no Dart symbols)')}');
     }
     console.blank();
@@ -285,7 +340,8 @@ class App {
     final done = <BuildRecord>[];
     final failed = <String>[];
     for (final r in requests) {
-      final label = '${r.flavor ?? 'default'} ${r.mode.name} ${r.type.name}';
+      final label = '${r.flavor ?? 'default'} ${r.mode.name} ${r.type.name}'
+          '${r.entryPoint == null ? '' : ' ${r.entryPoint}'}';
       console.heading('Building $label');
       try {
         done.add(await builder.build(_withPreBuild(r, ran)));
@@ -307,8 +363,8 @@ class App {
     }
   }
 
-  BuildRequest _request(
-      String? flavor, ArtifactType type, BuildMode mode, String name, int code,
+  BuildRequest _request(String? flavor, EntryPoint entry, ArtifactType type,
+      BuildMode mode, String name, int code,
       {required bool obfuscate,
       required bool splitPerAbi,
       required List<String> extraBuildArgs}) {
@@ -317,7 +373,8 @@ class App {
       type: type,
       mode: mode,
       flavor: flavor,
-      target: fc.target ?? project.defaultTarget(flavor),
+      target: entry.path,
+      entryPoint: entry.name,
       dartDefineFile: fc.dartDefineFile,
       versionName: name,
       versionCode: code,
@@ -336,6 +393,7 @@ class App {
         mode: r.mode,
         flavor: r.flavor,
         target: r.target,
+        entryPoint: r.entryPoint,
         dartDefineFile: r.dartDefineFile,
         versionName: r.versionName,
         versionCode: r.versionCode,

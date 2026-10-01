@@ -76,6 +76,7 @@ class SettingsScreen {
       }
       final options = [
         for (final d in defs) d.key,
+        'Entry points',
         'Flavors',
         'Review changes',
         dirty ? 'Save and reload' : 'Save and reload (no changes)',
@@ -83,6 +84,7 @@ class SettingsScreen {
       final hints = [
         for (final d in defs)
           '${_changed(d) ? '* ' : ''}${d.current(config)}  ${d.summary}',
+        _entrySummary(const ['entry_points']),
         'target, dart defines, package name, Firebase, Sentry per flavor',
         'what differs from the file on disk',
         savePath,
@@ -100,8 +102,11 @@ class SettingsScreen {
       if (choice < defs.length) {
         await _edit(defs[choice]);
       } else if (choice == defs.length) {
-        await _flavors();
+        await _entryPoints(
+            const ['entry_points'], 'Entry points (all flavors)');
       } else if (choice == defs.length + 1) {
+        await _flavors();
+      } else if (choice == defs.length + 2) {
         _review();
       } else {
         if (await _save()) return savePath;
@@ -263,14 +268,105 @@ class SettingsScreen {
       final config = _build(editor);
       final choice = await console.choose(
         'Flavor $name',
-        [for (final d in defs) d.path.last],
+        [for (final d in defs) d.path.last, 'entry_points'],
         hints: [
           for (final d in defs)
             '${_changed(d) ? '* ' : ''}${d.current(config)}  ${d.summary}',
+          _entrySummary(['flavors', name, 'entry_points']),
         ],
       );
       if (choice == null) return;
-      await _edit(defs[choice]);
+      if (choice == defs.length) {
+        await _entryPoints(
+            ['flavors', name, 'entry_points'], 'Entry points of flavor $name',
+            flavor: name);
+      } else {
+        await _edit(defs[choice]);
+      }
+    }
+  }
+
+  // ---- entry points -------------------------------------------------------------
+
+  String _entrySummary(List<String> base) {
+    final names = editor.keys(base);
+    return names.isEmpty
+        ? 'none set: lib/main.dart and detected lib/main_*.dart files'
+        : names.join(', ');
+  }
+
+  /// Edits the `name: path` map at [base]; [flavor] is the flavor it
+  /// belongs to, or null for the shared list.
+  Future<void> _entryPoints(List<String> base, String title,
+      {String? flavor}) async {
+    console
+      ..note('Each entry point is a Dart file with its own main(). Its name is '
+          'added to the artifact and folder names; "{flavor}" in a path is '
+          'replaced by the flavor.')
+      ..note(flavor == null
+          ? 'Flavors with their own list ignore this one.'
+          : 'This list replaces the shared one for $flavor.');
+    while (true) {
+      final names = editor.keys(base);
+      final map = editor.raw(base);
+      final config = _build(editor);
+      final ctx = _context;
+      final choice = await console.choose(
+        title,
+        [...names, 'Add an entry point...'],
+        hints: [
+          for (final n in names)
+            '${(map as Map)[n]}  =>  '
+                '${entryPointPreview(config, ctx, n, '${map[n]}', flavor: flavor)[3].substring(10)}',
+          'name and path of a Dart file',
+        ],
+      );
+      if (choice == null) return;
+      String name;
+      String? current;
+      if (choice < names.length) {
+        name = names[choice];
+        current = '${(map as Map)[name]}';
+        final action = await console.choose(
+            'Entry point $name', ['Change path', 'Remove'],
+            hints: [current, 'delete it from the file']);
+        if (action == null) continue;
+        if (action == 1) {
+          editor = editor.set([...base, name], null);
+          if (editor.keys(base).isEmpty) editor = editor.set(base, null);
+          console.success('$name removed (not saved yet)');
+          continue;
+        }
+      } else {
+        final text = await console.ask('Entry point name (e.g. admin)');
+        if (text == null) continue;
+        name = text;
+      }
+      final path = await console.ask('Dart file for "$name"',
+          defaultValue: current ?? 'lib/main_$name.dart');
+      if (path == null) continue;
+      try {
+        final next = editor.set([...base, name], path);
+        final c = _build(next);
+        console.out(console.style.bold('Preview'));
+        for (final line
+            in entryPointPreview(c, ctx, name, path, flavor: flavor)) {
+          console.out('  $line');
+        }
+        if (!File(p.join(
+                    project.dir, path.replaceAll('{flavor}', flavor ?? '')))
+                .existsSync() &&
+            !path.contains('{flavor}')) {
+          console.warn('  $path does not exist yet.');
+        }
+        if (await console.confirm('Use this entry point?',
+            defaultValue: true)) {
+          editor = next;
+          console.success('$name set (not saved yet)');
+        }
+      } on ConfigException catch (e) {
+        console.error('$e');
+      }
     }
   }
 
@@ -284,6 +380,20 @@ class SettingsScreen {
     };
     final defs = [
       ...globalSettings(),
+      for (final k in ['entry_points'])
+        SettingDef(
+            path: [k],
+            summary: '',
+            kind: SettingKind.text,
+            current: (c) => '',
+            preview: (c, x) => ['']),
+      for (final f in flavorNames)
+        SettingDef(
+            path: ['flavors', f, 'entry_points'],
+            summary: '',
+            kind: SettingKind.text,
+            current: (c) => '',
+            preview: (c, x) => ['']),
       for (final f in flavorNames) ...flavorSettings(f),
     ];
     String show(Object? v) => v == null ? '(not set)' : '$v';

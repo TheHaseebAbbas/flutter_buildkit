@@ -84,6 +84,7 @@ class BuildRecord {
     required this.artifacts,
     this.packageName,
     this.target,
+    this.entryPoint,
     this.symbolsDir,
     this.mappingFile,
     this.obfuscated = false,
@@ -113,6 +114,9 @@ class BuildRecord {
 
   /// Entry point passed with `-t`, if any.
   final String? target;
+
+  /// Name of the entry point (e.g. `admin`), when the build used a named one.
+  final String? entryPoint;
 
   /// Folder holding this build, relative to the ledger's root folder.
   final String outputDir;
@@ -178,6 +182,7 @@ class BuildRecord {
         versionCode: versionCode,
         createdAt: createdAt,
         target: target,
+        entryPoint: entryPoint,
         outputDir: outputDir,
         artifacts: artifacts,
         symbolsDir: symbolsDir,
@@ -206,6 +211,7 @@ class BuildRecord {
         'versionCode': versionCode,
         'createdAt': createdAt.toUtc().toIso8601String(),
         if (target != null) 'target': target,
+        if (entryPoint != null) 'entryPoint': entryPoint,
         'outputDir': outputDir,
         'artifacts': [for (final a in artifacts) a.toJson()],
         if (symbolsDir != null) 'symbolsDir': symbolsDir,
@@ -245,6 +251,7 @@ class BuildRecord {
       versionCode: (json['versionCode']! as num).toInt(),
       createdAt: DateTime.parse(json['createdAt']! as String),
       target: json['target'] as String?,
+      entryPoint: json['entryPoint'] as String?,
       outputDir: json['outputDir']! as String,
       artifacts: [
         for (final a in (json['artifacts'] as List?) ?? const [])

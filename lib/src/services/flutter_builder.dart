@@ -22,6 +22,7 @@ class BuildRequest {
     required this.versionCode,
     this.flavor,
     this.target,
+    this.entryPoint,
     this.dartDefineFile,
     this.obfuscate = true,
     this.splitPerAbi = false,
@@ -35,6 +36,9 @@ class BuildRequest {
   final BuildMode mode;
   final String? flavor;
   final String? target;
+
+  /// Name of the entry point, when a named one is built.
+  final String? entryPoint;
   final String? dartDefineFile;
   final String versionName;
   final int versionCode;
@@ -108,6 +112,7 @@ class FlutterBuilder {
           versionCode: request.versionCode,
           time: started,
           type: type,
+          entry: request.entryPoint,
         );
     final outDir = paths.uniqueBuildDir(naming(request.type));
     await Directory(outDir).create(recursive: true);
@@ -183,6 +188,7 @@ class FlutterBuilder {
       versionCode: request.versionCode,
       createdAt: started.toUtc(),
       target: request.target,
+      entryPoint: request.entryPoint,
       outputDir: ledger.relativize(outDir),
       artifacts: artifacts,
       symbolsDir:
