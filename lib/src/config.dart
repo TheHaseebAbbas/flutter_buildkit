@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
+import 'build_paths.dart';
+
 /// Per-flavor settings. Every field is optional.
 class FlavorConfig {
   const FlavorConfig({
@@ -108,6 +110,8 @@ class AppConfig {
     required this.projectDir,
     this.configFile,
     this.outputDir = 'app_builds',
+    this.outputLayout,
+    this.fileName,
     this.ledgerFile,
     this.flutter = const ['flutter'],
     this.obfuscate = true,
@@ -131,6 +135,13 @@ class AppConfig {
 
   /// Root of the build folder tree, relative to [projectDir] unless absolute.
   final String outputDir;
+
+  /// Folder layout inside [outputDir]: a preset id or a template (see
+  /// [LayoutPreset], [PathTemplate]). Null means the default.
+  final String? outputLayout;
+
+  /// Artifact file name template, without extension.
+  final String? fileName;
 
   /// Ledger path; defaults to `<outputDir>/ledger.json`.
   final String? ledgerFile;
@@ -215,6 +226,8 @@ class AppConfig {
       projectDir: projectDir,
       configFile: configFile,
       outputDir: y['output_dir'] as String? ?? 'app_builds',
+      outputLayout: _layout(y['output_layout']),
+      fileName: _fileName(y['file_name']),
       ledgerFile: y['ledger'] as String?,
       flutter: _command(env['FBK_FLUTTER'] ?? y['flutter'], const ['flutter']),
       obfuscate: y['obfuscate'] as bool? ?? true,
@@ -257,6 +270,28 @@ class AppConfig {
     );
   }
 
+  static String? _layout(Object? v) {
+    if (v == null) return null;
+    final resolved = BuildPaths.resolveLayout('$v');
+    try {
+      PathTemplate.parse(resolved, isFolder: true);
+    } on PathTemplateException catch (e) {
+      throw ConfigException('output_layout: $e Presets: '
+          '${LayoutPreset.values.map((p) => p.id).join(', ')}.');
+    }
+    return resolved;
+  }
+
+  static String? _fileName(Object? v) {
+    if (v == null) return null;
+    try {
+      PathTemplate.parse('$v', isFolder: false);
+    } on PathTemplateException catch (e) {
+      throw ConfigException('file_name: $e');
+    }
+    return '$v';
+  }
+
   static Map<Object?, Object?> _map(Object? v) =>
       v is Map ? v.cast<Object?, Object?>() : const {};
 
@@ -268,12 +303,77 @@ class AppConfig {
     return fallback;
   }
 
+  /// The effective settings, one `key: value` per line, secrets masked.
+  String describe() {
+    String mask(String? v) =>
+        v == null ? '(not set)' : '${v.substring(0, v.length < 4 ? 0 : 4)}****';
+    String list(List<String> v) => v.isEmpty ? '[]' : v.join(' ');
+    final lines = <String, String>{
+      'config file': configFile ?? '(none; defaults)',
+      'project': projectDir,
+      'output_dir': outputRoot,
+      'output_layout': outputLayout ?? LayoutPreset.byFlavor.template,
+      'file_name': fileName ?? BuildPaths.defaultFileName,
+      'ledger': ledgerPath,
+      'flutter': flutter.join(' '),
+      'obfuscate': '$obfuscate',
+      'split_per_abi': '$splitPerAbi',
+      'extra_build_args': list(extraBuildArgs),
+      'pre_build.clean': '${preBuild.clean}',
+      'pre_build.build_runner': '${preBuild.buildRunner}',
+      'pre_build.gen_l10n': '${preBuild.genL10n}',
+      'pre_build.build_runner_args': list(preBuild.buildRunnerArgs),
+      'play.service_account_json': play.serviceAccountJson ?? '(not set)',
+      'play.default_track': play.defaultTrack,
+      'play.default_release_status': play.defaultReleaseStatus,
+      'play.upload_mapping': '${play.uploadMapping}',
+      'crashlytics.enabled': '${crashlytics.enabled}',
+      'crashlytics.cli': crashlytics.cli.join(' '),
+      'sentry.enabled': '${sentry.enabled}',
+      'sentry.cli': sentry.cli.join(' '),
+      'sentry.org': sentry.org ?? '(not set)',
+      'sentry.project': sentry.project ?? '(not set)',
+      'sentry.url': sentry.url ?? 'sentry.io',
+      'sentry.auth_token': mask(sentry.authToken),
+      'android.retrace': androidRetrace ?? '(PATH / ANDROID_HOME)',
+      'android.ndk_stack': androidNdkStack ?? '(PATH / ANDROID_NDK_HOME)',
+    };
+    for (final e in flavors.entries) {
+      final f = e.value;
+      lines['flavors.${e.key}'] = [
+        if (f.target != null) 'target=${f.target}',
+        if (f.dartDefineFile != null) 'dart_define_file=${f.dartDefineFile}',
+        if (f.packageName != null) 'package_name=${f.packageName}',
+        if (f.firebaseAppId != null) 'firebase_app_id=${f.firebaseAppId}',
+        if (f.sentryProject != null) 'sentry_project=${f.sentryProject}',
+        if (f.extraArgs.isNotEmpty) 'extra_args=${f.extraArgs.join(' ')}',
+      ].join(' ');
+    }
+    final width =
+        lines.keys.map((k) => k.length).reduce((a, b) => a > b ? a : b);
+    return lines.entries
+        .map((e) => '${e.key.padRight(width)}  ${e.value}')
+        .join('\n');
+  }
+
   static const template = '''
 # flutter_buildkit config. Keep this file out of git if it holds secrets;
 # prefer the environment variables noted below for credentials.
 
 # Where builds and the ledger are stored (relative to the Flutter project).
 output_dir: app_builds
+
+# Folder layout inside output_dir. A preset or your own template.
+#   by-flavor   {app}/{flavor}/{mode}/{version}-{datetime}            (default)
+#   by-version  {app}/{version}/{flavor}-{mode}-{datetime}
+#   by-month    {year}-{month}/{app}-{flavor}-{mode}-{version}-{datetime}
+#   flat        {app}-{flavor}-{mode}-{version}-{datetime}
+# Tokens: {app} {flavor} {mode} {versionName} {versionCode} {version}
+#         {datetime} {date} {time} {year} {month} {type}
+output_layout: by-flavor
+
+# Artifact file name (no extension). {version} = <versionName>-b<versionCode>.
+file_name: "{app}-{flavor}-{mode}-{version}-{datetime}"
 # ledger: app_builds/ledger.json
 
 # Command used to run Flutter ("fvm flutter" works too). Env: FBK_FLUTTER

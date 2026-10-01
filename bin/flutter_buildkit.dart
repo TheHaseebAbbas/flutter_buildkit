@@ -12,6 +12,7 @@ Usage: flutter_buildkit [options] [command]
 Commands:
   (none)   Open the interactive menu.
   init     Write a starter flutter_buildkit.yaml in the project.
+  config   Show the settings in effect (secrets masked).
   list     Print the ledger as a table.
   export   Write the ledger as csv, tsv or json: export <format> [file]
 
@@ -116,6 +117,8 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
                 ledger: ledger,
                 console: Console(mode: ui))
             .run();
+      case 'config':
+        stdout.writeln(config.describe());
       case 'list':
         final records = ledger.records;
         stdout.writeln(records.isEmpty

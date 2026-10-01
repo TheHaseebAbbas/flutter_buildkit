@@ -81,8 +81,14 @@ void main() {
     final dir = ledger.resolve(record.outputDir);
     expect(p.split(record.outputDir),
         containsAllInOrder(['demo', 'dev', 'release']));
-    expect(
-        File(p.join(dir, 'demo-dev-release-1.2.0+5.aab')).existsSync(), isTrue);
+    final artifacts = Directory(p.join(dir, 'artifacts'))
+        .listSync()
+        .map((e) => p.basename(e.path))
+        .toList();
+    expect(artifacts, hasLength(1));
+    expect(artifacts.single,
+        matches(RegExp(r'^demo-dev-release-1\.2\.0-b5-\d{8}-\d{6}\.aab$')));
+    expect(p.basename(dir), matches(RegExp(r'^1\.2\.0-b5-\d{8}-\d{6}$')));
     expect(
         File(p.join(dir, 'symbols', 'dart', 'app.android-arm64.symbols'))
             .existsSync(),

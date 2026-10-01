@@ -98,18 +98,22 @@ class FlutterBuilder {
   Future<BuildRecord> build(BuildRequest request) async {
     final started = DateTime.now();
     final appName = project.appName;
-    final paths = BuildPaths(config.outputRoot);
-    final outDir = paths.uniqueBuildDir(
-      appName: appName,
-      flavor: request.flavor,
-      mode: request.mode,
-      versionName: request.versionName,
-      versionCode: request.versionCode,
-      time: started,
-    );
+    final paths = BuildPaths(config.outputRoot,
+        layout: config.outputLayout, fileName: config.fileName);
+    BuildNaming naming(ArtifactType type) => BuildNaming(
+          appName: appName,
+          flavor: request.flavor,
+          mode: request.mode,
+          versionName: request.versionName,
+          versionCode: request.versionCode,
+          time: started,
+          type: type,
+        );
+    final outDir = paths.uniqueBuildDir(naming(request.type));
     await Directory(outDir).create(recursive: true);
-    final symbolsDir =
-        request.willObfuscate ? p.join(outDir, 'symbols', 'dart') : null;
+    final symbolsDir = request.willObfuscate
+        ? p.join(outDir, BuildPaths.symbolsFolder, 'dart')
+        : null;
 
     final command = [
       ...config.flutter,
@@ -142,16 +146,10 @@ class FlutterBuilder {
 
     final artifacts = <BuildArtifact>[];
     for (final source in outputs) {
-      final name = BuildPaths.artifactName(
-        appName: appName,
-        flavor: request.flavor,
-        mode: request.mode,
-        versionName: request.versionName,
-        versionCode: request.versionCode,
-        type: request.type,
-        suffix: outputs.length > 1 ? _abiSuffix(source.path) : null,
-      );
-      final dest = File(p.join(outDir, name));
+      final name = paths.artifactFileName(naming(request.type),
+          suffix: outputs.length > 1 ? _abiSuffix(source.path) : null);
+      final dest = File(p.join(outDir, BuildPaths.artifactsFolder, name));
+      await dest.parent.create(recursive: true);
       await source.copy(dest.path);
       artifacts.add(BuildArtifact(
         path: ledger.relativize(dest.path),
@@ -168,8 +166,8 @@ class FlutterBuilder {
       final dsyms = Directory(p.join(
           project.dir, 'build', 'ios', 'archive', 'Runner.xcarchive', 'dSYMs'));
       if (dsyms.existsSync()) {
-        await copyDirectory(
-            dsyms, Directory(p.join(outDir, 'symbols', 'dSYMs')));
+        await copyDirectory(dsyms,
+            Directory(p.join(outDir, BuildPaths.symbolsFolder, 'dSYMs')));
       }
     }
 
@@ -187,9 +185,10 @@ class FlutterBuilder {
       target: request.target,
       outputDir: ledger.relativize(outDir),
       artifacts: artifacts,
-      symbolsDir: Directory(p.join(outDir, 'symbols')).existsSync()
-          ? ledger.relativize(p.join(outDir, 'symbols'))
-          : null,
+      symbolsDir:
+          Directory(p.join(outDir, BuildPaths.symbolsFolder)).existsSync()
+              ? ledger.relativize(p.join(outDir, BuildPaths.symbolsFolder))
+              : null,
       mappingFile: mappingFile,
       obfuscated: request.willObfuscate,
       gitCommit: commit,
@@ -262,7 +261,8 @@ class FlutterBuilder {
     final mappingTxt = File(p.join(mappingDir.path, 'mapping.txt'));
     if (mappingTxt.existsSync() &&
         !mappingTxt.lastModifiedSync().isBefore(cutoff)) {
-      final dest = Directory(p.join(outDir, 'symbols', 'mapping'));
+      final dest =
+          Directory(p.join(outDir, BuildPaths.symbolsFolder, 'mapping'));
       await copyDirectory(mappingDir, dest);
       mappingFile = ledger.relativize(p.join(dest.path, 'mapping.txt'));
     }
@@ -275,8 +275,8 @@ class FlutterBuilder {
         if (entity is Directory &&
             p.split(entity.path).reversed.take(2).toList().join('/') ==
                 'lib/out') {
-          await copyDirectory(
-              entity, Directory(p.join(outDir, 'symbols', 'native')));
+          await copyDirectory(entity,
+              Directory(p.join(outDir, BuildPaths.symbolsFolder, 'native')));
         }
       }
     }
