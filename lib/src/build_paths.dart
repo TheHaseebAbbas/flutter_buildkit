@@ -94,3 +94,15 @@ class BuildPaths {
     return s.isEmpty ? '_' : s;
   }
 }
+
+/// Deletes [dir] and its parents while they are empty, stopping before
+/// [root] itself.
+Future<void> pruneEmptyParents(String root, Directory dir) async {
+  var current = dir;
+  while (p.isWithin(root, current.path) &&
+      await current.exists() &&
+      await current.list().isEmpty) {
+    await current.delete();
+    current = current.parent;
+  }
+}

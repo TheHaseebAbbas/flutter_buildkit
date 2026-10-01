@@ -74,7 +74,7 @@ class BuildRecord {
   const BuildRecord({
     required this.id,
     required this.appName,
-    required this.flavor,
+    this.flavor,
     required this.mode,
     required this.type,
     required this.versionName,
@@ -94,6 +94,8 @@ class BuildRecord {
     this.publishedAt,
     this.play,
     this.symbolUploads = const {},
+    this.preBuild = const [],
+    this.artifactsDeletedAt,
     this.notes,
   });
 
@@ -134,12 +136,26 @@ class BuildRecord {
 
   /// Tool name ([SymbolTargets]) to upload time.
   final Map<String, DateTime> symbolUploads;
+
+  /// Steps run before the build (clean, pub get, build_runner, gen-l10n).
+  final List<String> preBuild;
+
+  /// When the APK/AAB/IPA files were deleted (symbols are kept).
+  final DateTime? artifactsDeletedAt;
   final String? notes;
 
   String get flavorLabel => flavor ?? 'default';
   String get version => '$versionName+$versionCode';
   bool get isPublished => publishedAt != null;
   bool get isOnPlay => play != null;
+
+  /// Published or uploaded to Google Play. A released build keeps its
+  /// ledger entry, debug symbols and mappings forever, so crashes from the
+  /// field can still be traced; only its APK/AAB/IPA files may be deleted.
+  bool get isReleased => isPublished || isOnPlay;
+
+  bool get artifactsDeleted => artifactsDeletedAt != null;
+
   int get totalSize => artifacts.fold(0, (sum, a) => sum + a.sizeBytes);
 
   BuildRecord copyWith({
@@ -148,6 +164,7 @@ class BuildRecord {
     PlayUpload? play,
     bool clearPlay = false,
     Map<String, DateTime>? symbolUploads,
+    DateTime? artifactsDeletedAt,
     String? notes,
   }) =>
       BuildRecord(
@@ -173,6 +190,8 @@ class BuildRecord {
         publishedAt: clearPublished ? null : (publishedAt ?? this.publishedAt),
         play: clearPlay ? null : (play ?? this.play),
         symbolUploads: symbolUploads ?? this.symbolUploads,
+        preBuild: preBuild,
+        artifactsDeletedAt: artifactsDeletedAt ?? this.artifactsDeletedAt,
         notes: notes ?? this.notes,
       );
 
@@ -204,6 +223,9 @@ class BuildRecord {
               e.key: e.value.toUtc().toIso8601String(),
           },
         },
+        if (preBuild.isNotEmpty) 'preBuild': preBuild,
+        if (artifactsDeletedAt != null)
+          'artifactsDeletedAt': artifactsDeletedAt!.toUtc().toIso8601String(),
         if (notes != null) 'notes': notes,
       };
 
@@ -243,6 +265,12 @@ class BuildRecord {
         for (final e in symbols.entries)
           e.key: DateTime.parse(e.value! as String),
       },
+      preBuild: [
+        for (final p in (json['preBuild'] as List?) ?? const []) '$p',
+      ],
+      artifactsDeletedAt: json['artifactsDeletedAt'] == null
+          ? null
+          : DateTime.parse(json['artifactsDeletedAt']! as String),
       notes: json['notes'] as String?,
     );
   }

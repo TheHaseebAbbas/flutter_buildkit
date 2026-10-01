@@ -121,6 +121,9 @@ Future<int> main(List<String> arguments) async {
         return 64;
     }
     return 0;
+  } on ConsoleAbort {
+    stdout.writeln('\nAborted.');
+    return 130;
   } on ConfigException catch (e) {
     stderr.writeln('Config error: $e');
     return 78;

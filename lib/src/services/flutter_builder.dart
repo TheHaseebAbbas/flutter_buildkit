@@ -27,6 +27,7 @@ class BuildRequest {
     this.splitPerAbi = false,
     this.extraArgs = const [],
     this.packageName,
+    this.preBuild = const [],
     this.notes,
   });
 
@@ -41,6 +42,9 @@ class BuildRequest {
   final bool splitPerAbi;
   final List<String> extraArgs;
   final String? packageName;
+
+  /// Labels of the pre-build steps that ran, for the ledger.
+  final List<String> preBuild;
   final String? notes;
 
   /// Obfuscation is only valid for profile and release builds.
@@ -157,12 +161,8 @@ class FlutterBuilder {
     }
 
     String? mappingFile;
-    final mapping = _findMapping(request, since: started);
-    if (mapping != null) {
-      final dest = p.join(outDir, 'symbols', 'mapping.txt');
-      await Directory(p.dirname(dest)).create(recursive: true);
-      await mapping.copy(dest);
-      mappingFile = ledger.relativize(dest);
+    if (request.type.isAndroid) {
+      mappingFile = await _storeAndroidSymbols(request, outDir, started);
     }
     if (request.type == ArtifactType.ipa) {
       final dsyms = Directory(p.join(
@@ -196,6 +196,7 @@ class FlutterBuilder {
       gitBranch: branch,
       flutterVersion: flutterVersion,
       durationMs: DateTime.now().difference(started).inMilliseconds,
+      preBuild: request.preBuild,
       notes: request.notes,
     );
     await File(p.join(outDir, 'build_info.json')).writeAsString(
@@ -211,7 +212,7 @@ class FlutterBuilder {
       ArtifactType.aab => [p.join(base, 'app', 'outputs', 'bundle')],
       ArtifactType.ipa => [p.join(base, 'ios', 'ipa')],
     };
-    final cutoff = since.subtract(const Duration(seconds: 2));
+    final cutoff = _wholeSecond(since);
     final found = <File>[];
     for (final d in dirs.map(Directory.new)) {
       if (!d.existsSync()) continue;
@@ -236,18 +237,50 @@ class FlutterBuilder {
     return found;
   }
 
-  File? _findMapping(BuildRequest r, {required DateTime since}) {
-    if (!r.type.isAndroid) return null;
-    final variant =
-        r.flavor == null ? r.mode.name : '${r.flavor}${r.mode.capitalized}';
-    final f = File(p.join(project.dir, 'build', 'app', 'outputs', 'mapping',
-        variant, 'mapping.txt'));
-    if (!f.existsSync()) return null;
-    return f
-            .lastModifiedSync()
-            .isBefore(since.subtract(const Duration(seconds: 2)))
-        ? null
-        : f;
+  /// [t] cut to whole seconds, so file systems with 1 s timestamps still see
+  /// this build's outputs as new, while earlier builds' files stay old.
+  static DateTime _wholeSecond(DateTime t) =>
+      DateTime.fromMillisecondsSinceEpoch(
+          t.millisecondsSinceEpoch ~/ 1000 * 1000);
+
+  /// Gradle variant name: `release`, or `devRelease` for flavor `dev`.
+  static String variantName(BuildRequest r) =>
+      r.flavor == null ? r.mode.name : '${r.flavor}${r.mode.capitalized}';
+
+  /// Copies the R8/ProGuard output (`mapping.txt`, `usage.txt`, `seeds.txt`,
+  /// ...) to `symbols/mapping/` and the unstripped native libraries to
+  /// `symbols/native/`. Returns the ledger path of `mapping.txt`, if any.
+  Future<String?> _storeAndroidSymbols(
+      BuildRequest r, String outDir, DateTime since) async {
+    final cutoff = _wholeSecond(since);
+    final variant = variantName(r);
+    final intermediates = p.join(project.dir, 'build', 'app');
+
+    String? mappingFile;
+    final mappingDir =
+        Directory(p.join(intermediates, 'outputs', 'mapping', variant));
+    final mappingTxt = File(p.join(mappingDir.path, 'mapping.txt'));
+    if (mappingTxt.existsSync() &&
+        !mappingTxt.lastModifiedSync().isBefore(cutoff)) {
+      final dest = Directory(p.join(outDir, 'symbols', 'mapping'));
+      await copyDirectory(mappingDir, dest);
+      mappingFile = ledger.relativize(p.join(dest.path, 'mapping.txt'));
+    }
+
+    // AGP 7/8 write native libraries to .../out/lib/<abi>/*.so.
+    final native = Directory(
+        p.join(intermediates, 'intermediates', 'merged_native_libs', variant));
+    if (native.existsSync()) {
+      for (final entity in native.listSync(recursive: true)) {
+        if (entity is Directory &&
+            p.split(entity.path).reversed.take(2).toList().join('/') ==
+                'lib/out') {
+          await copyDirectory(
+              entity, Directory(p.join(outDir, 'symbols', 'native')));
+        }
+      }
+    }
+    return mappingFile;
   }
 
   Future<String?> _flutterVersion() async {
@@ -267,6 +300,7 @@ class FlutterBuilder {
   Future<void> _discard(String outDir) async {
     final d = Directory(outDir);
     if (await d.exists()) await d.delete(recursive: true);
+    await pruneEmptyParents(config.outputRoot, d.parent);
   }
 
   static String? _abiSuffix(String path) {

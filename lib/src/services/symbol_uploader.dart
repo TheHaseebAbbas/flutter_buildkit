@@ -61,6 +61,15 @@ class SymbolUploader {
             dart,
           ]);
         }
+        final native = p.join(symbols, 'native');
+        if (Directory(native).existsSync()) {
+          commands.add([
+            ...config.crashlytics.cli,
+            'crashlytics:symbols:upload',
+            '--app=$appId',
+            native,
+          ]);
+        }
         final dsyms = p.join(symbols, 'dSYMs');
         final script = p.join(project.dir, 'ios', 'Pods', 'FirebaseCrashlytics',
             'upload-symbols');

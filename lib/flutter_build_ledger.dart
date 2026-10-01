@@ -13,3 +13,7 @@ export 'src/services/process_runner.dart';
 export 'src/services/symbol_uploader.dart';
 export 'src/ui/console.dart';
 export 'src/ui/table.dart';
+export 'src/ui/keys.dart';
+export 'src/ui/select_model.dart';
+export 'src/services/pre_build.dart';
+export 'src/services/symbolicator.dart';

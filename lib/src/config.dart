@@ -40,6 +40,21 @@ class FlavorConfig {
       );
 }
 
+/// Which pre-build steps are ticked by default in the build menu.
+class PreBuildConfig {
+  const PreBuildConfig({
+    this.clean = false,
+    this.buildRunner = true,
+    this.genL10n = true,
+    this.buildRunnerArgs = const ['--delete-conflicting-outputs'],
+  });
+
+  final bool clean;
+  final bool buildRunner;
+  final bool genL10n;
+  final List<String> buildRunnerArgs;
+}
+
 class PlayConfig {
   const PlayConfig({
     this.serviceAccountJson,
@@ -98,6 +113,9 @@ class AppConfig {
     this.obfuscate = true,
     this.splitPerAbi = false,
     this.extraBuildArgs = const [],
+    this.preBuild = const PreBuildConfig(),
+    this.androidRetrace,
+    this.androidNdkStack,
     this.flavors = const {},
     this.play = const PlayConfig(),
     this.crashlytics = const CrashlyticsConfig(),
@@ -125,6 +143,12 @@ class AppConfig {
   final bool obfuscate;
   final bool splitPerAbi;
   final List<String> extraBuildArgs;
+  final PreBuildConfig preBuild;
+
+  /// Paths to `retrace` and `ndk-stack` when they are not on PATH or found
+  /// through ANDROID_HOME / ANDROID_NDK_HOME.
+  final String? androidRetrace;
+  final String? androidNdkStack;
   final Map<String, FlavorConfig> flavors;
   final PlayConfig play;
   final CrashlyticsConfig crashlytics;
@@ -178,6 +202,8 @@ class AppConfig {
     final crashY = _map(y['crashlytics']);
     final sentryY = _map(y['sentry']);
     final flavorsY = _map(y['flavors']);
+    final preY = _map(y['pre_build']);
+    final androidY = _map(y['android']);
 
     String? expand(String? path) {
       if (path == null || path.isEmpty) return null;
@@ -197,6 +223,16 @@ class AppConfig {
       obfuscate: y['obfuscate'] as bool? ?? true,
       splitPerAbi: y['split_per_abi'] as bool? ?? false,
       extraBuildArgs: _stringList(y['extra_build_args']),
+      androidRetrace: env['FBL_RETRACE'] ?? androidY['retrace'] as String?,
+      androidNdkStack: env['FBL_NDK_STACK'] ?? androidY['ndk_stack'] as String?,
+      preBuild: PreBuildConfig(
+        clean: preY['clean'] as bool? ?? false,
+        buildRunner: preY['build_runner'] as bool? ?? true,
+        genL10n: preY['gen_l10n'] as bool? ?? true,
+        buildRunnerArgs: preY['build_runner_args'] == null
+            ? const ['--delete-conflicting-outputs']
+            : _stringList(preY['build_runner_args']),
+      ),
       flavors: {
         for (final e in flavorsY.entries)
           '${e.key}': FlavorConfig.fromYaml(_map(e.value)),
@@ -251,6 +287,14 @@ obfuscate: true
 split_per_abi: false
 extra_build_args: []
 
+# Steps pre-ticked in the build menu (you can change them per build).
+# build_runner and gen-l10n only run when the project uses them.
+pre_build:
+  clean: false            # flutter clean + flutter pub get
+  build_runner: true      # build_runner build
+  gen_l10n: true          # flutter gen-l10n
+  build_runner_args: [--delete-conflicting-outputs]
+
 # Optional per-flavor settings. Flavors are also detected from Gradle and
 # Xcode schemes; anything set here overrides what was detected.
 flavors:
@@ -263,6 +307,11 @@ flavors:
   # prod:
   #   target: lib/main_prod.dart
   #   package_name: com.example.app
+
+# Tools used by the "Trace crash" menu when they are not on PATH.
+# android:
+#   retrace: /path/to/Android/Sdk/cmdline-tools/latest/bin/retrace
+#   ndk_stack: /path/to/Android/Sdk/ndk/<version>/ndk-stack
 
 play:
   # Service account key with access to the app in Play Console.

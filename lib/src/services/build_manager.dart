@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../build_paths.dart';
 import '../ledger/ledger.dart';
 import '../model/build_record.dart';
 
@@ -19,28 +20,54 @@ class BuildManager {
   Future<BuildRecord> unmarkPublished(BuildRecord r) =>
       ledger.update(r.id, (x) => x.copyWith(clearPublished: true));
 
-  /// Deletes the build folder and removes the ledger row.
+  /// Deletes builds.
   ///
-  /// The ledger row is removed even when the folder is already gone, so the
-  /// ledger never keeps a row for a build that no longer exists. Returns the
-  /// builds whose folder could not be deleted; their rows are kept.
+  /// * A build that was never published or uploaded to Play is removed
+  ///   completely: its folder (files, symbols, mappings) and its ledger row.
+  /// * A [BuildRecord.isReleased] build only loses its APK/AAB/IPA files. Its
+  ///   debug symbols, mappings and ledger row stay, so crashes from the field
+  ///   can still be traced.
+  ///
+  /// Builds whose files could not be deleted keep their row.
   Future<DeleteResult> delete(Iterable<BuildRecord> records) async {
     final deleted = <BuildRecord>[];
+    final filesOnly = <BuildRecord>[];
     final failed = <BuildRecord, Object>{};
     for (final r in records) {
       try {
-        final dir = Directory(_safeBuildDir(r));
-        if (await dir.exists()) await dir.delete(recursive: true);
-        await _pruneEmptyParents(dir.parent);
-        deleted.add(r);
+        if (r.isReleased) {
+          if (r.artifactsDeleted) continue;
+          await _deleteArtifacts(r);
+          await ledger.update(r.id,
+              (x) => x.copyWith(artifactsDeletedAt: DateTime.now().toUtc()));
+          filesOnly.add(r);
+        } else {
+          final dir = Directory(_safeBuildDir(r));
+          if (await dir.exists()) await dir.delete(recursive: true);
+          await pruneEmptyParents(ledger.rootDir, dir.parent);
+          await ledger.remove([r.id]);
+          deleted.add(r);
+        }
       } on FileSystemException catch (e) {
         failed[r] = e;
       } on StateError catch (e) {
         failed[r] = e;
       }
     }
-    await ledger.remove(deleted.map((r) => r.id));
-    return DeleteResult(deleted, failed);
+    return DeleteResult(deleted, filesOnly, failed);
+  }
+
+  Future<void> _deleteArtifacts(BuildRecord r) async {
+    _safeBuildDir(r);
+    for (final a in r.artifacts) {
+      final path = ledger.resolve(a.path);
+      if (!p.isWithin(ledger.rootDir, path)) {
+        throw StateError(
+            'Refusing to delete $path: outside ${ledger.rootDir}.');
+      }
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    }
   }
 
   /// Build folder for [r], refusing anything outside the ledger's root.
@@ -52,22 +79,15 @@ class BuildManager {
     }
     return dir;
   }
-
-  /// Removes `<mode>`, `<flavor>` and `<app>` folders left empty, never the
-  /// root itself.
-  Future<void> _pruneEmptyParents(Directory dir) async {
-    var current = dir;
-    while (p.isWithin(ledger.rootDir, current.path) &&
-        await current.exists() &&
-        await current.list().isEmpty) {
-      await current.delete();
-      current = current.parent;
-    }
-  }
 }
 
 class DeleteResult {
-  DeleteResult(this.deleted, this.failed);
+  DeleteResult(this.deleted, this.filesOnly, this.failed);
+
+  /// Folder and ledger row removed.
   final List<BuildRecord> deleted;
+
+  /// Released builds: only the binaries were removed; symbols and row kept.
+  final List<BuildRecord> filesOnly;
   final Map<BuildRecord, Object> failed;
 }

@@ -32,18 +32,55 @@ To work on this repo itself, clone it and run `dart pub get`, then
 Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`.
 Other commands: `init` (write a starter config), `list`, `export <csv|tsv|json> [file]`.
 
-## Menu
+## Using the menu
+
+On a terminal every list is arrow-key driven (plain numbered questions are
+used instead when input is piped):
+
+| Key | Does |
+|---|---|
+| Up / Down, `k` / `j`, PgUp / PgDn, Home / End | Move |
+| Enter | Choose (single) or confirm (multi) |
+| Space | Tick or untick a row (multi select) |
+| `a` / `n` / `i` | Tick all, none, or invert the visible rows |
+| `/` | Filter the list by typing (Esc clears) |
+| `1`-`9` | Jump to that row (single select) |
+| Esc or `q` | Back / cancel; Ctrl-C quits |
 
 | Item | What it does |
 |---|---|
-| Build app | Pick flavor (from Gradle product flavors and Xcode schemes), output (APK / AAB / IPA on macOS), mode, version name and code; runs `flutter build` and records the result. |
+| Build app | Tick any flavors, outputs (APK / AAB / IPA on macOS) and modes; every combination is built. Optional steps run once first: **flutter clean** (followed by `pub get`), **build_runner** and **flutter gen-l10n** (offered only when the project uses them). |
 | List builds | Table of all ledger rows, newest first, with status. |
 | Build details | Everything stored for one build, including SHA-256 of each artifact. |
-| Mark as published | Flags a build as released to users (toggle to clear). |
-| Upload to Google Play | Really uploads the AAB through the Play Developer API when credentials are configured; otherwise (or by choice) only marks the ledger as uploaded. |
-| Upload debug symbols | Firebase Crashlytics (`firebase` CLI) and/or Sentry (`sentry-cli`). |
-| Delete builds | Removes the build folder **and** its ledger row. |
+| Mark builds as published | Flags builds as released to users (or clears the mark). |
+| Upload to Google Play | Really uploads the AAB through the Play Developer API when credentials are configured; otherwise (or by choice) only marks the ledger. |
+| Upload debug symbols | Pick builds and Firebase Crashlytics (`firebase` CLI) and/or Sentry (`sentry-cli`). |
+| Trace a crash | Paste or load a stack trace and get it de-obfuscated with the symbols stored for a build (see below). |
+| Delete builds | Multi select; see the delete rules below. |
 | Export ledger | CSV, TSV or JSON file. |
+
+## Delete rules
+
+* A build that was **never published and never uploaded to Play** is removed
+  completely: its folder (files, symbols, mappings) and its ledger row.
+* A **released** build (marked published or uploaded to Play) only loses its
+  APK/AAB/IPA files. Its debug symbols, mappings and ledger row are kept
+  forever, so crashes from the field can still be traced. The row shows
+  `files deleted`.
+
+## Tracing crashes
+
+"Trace a crash" works on any build that still has symbols, including released
+builds whose files were deleted. It detects the trace type and runs:
+
+| Trace | Tool | Uses |
+|---|---|---|
+| Obfuscated Dart | `flutter symbolize` | `symbols/dart/` |
+| Android Java/Kotlin | R8 `retrace` | `symbols/mapping/mapping.txt` |
+| Native crash (tombstone) | `ndk-stack` | `symbols/native/<abi>/` |
+
+`retrace` and `ndk-stack` are found on `PATH`, through `ANDROID_HOME` /
+`ANDROID_NDK_HOME`, or via `android.retrace` / `android.ndk_stack` in the config.
 
 ## Output layout
 
@@ -52,7 +89,8 @@ app_builds/<app>/<flavor>/<mode>/<versionName>+<versionCode>_<yyyyMMdd-HHmmss>/
     <app>-<flavor>-<mode>-<version>.aab
     build_info.json
     symbols/dart/        # --split-debug-info output (obfuscated builds)
-    symbols/mapping.txt  # R8 mapping, when produced
+    symbols/mapping/      # R8 mapping.txt, usage.txt, seeds.txt...
+    symbols/native/       # unstripped native libraries (.so per ABI)
     symbols/dSYMs/       # iOS
 app_builds/ledger.json
 ```
@@ -97,9 +135,14 @@ that one and the API afterwards.
 
 ### Symbols
 
-Crash symbols are only kept for obfuscated profile/release builds
-(`obfuscate: true`, the default). Deleting such a build before uploading its
-symbols loses the only copy, so the delete menu warns about it.
+Every build stores its debug symbols next to the binaries: Dart symbols
+(`--split-debug-info`), the full R8 mapping folder, unstripped native
+libraries per ABI and, for iOS, dSYMs. Dart symbols exist only for obfuscated
+profile/release builds (`obfuscate: true`, the default). Deleting an
+unreleased build also deletes its symbols, so the delete menu warns when they
+were never uploaded. Crashlytics gets the Dart and native symbols (and dSYMs
+on iOS); Sentry gets the whole symbols folder plus the R8 mapping. Crashlytics
+R8 mappings are normally uploaded by its Gradle plugin at build time.
 
 ## Development
 
@@ -107,7 +150,8 @@ symbols loses the only copy, so the delete menu warns about it.
 dart analyze && dart test
 ```
 
-The tests cover the ledger (persistence, atomic save, export, delete), the
-folder layout, Gradle flavor parsing, build arguments and config. Building,
+The tests cover the ledger (persistence, atomic save, export, delete rules),
+the folder layout, Gradle flavor parsing, build arguments, config, pre-build
+planning, trace tooling and the keyboard/selection logic. Building,
 the Play API, `firebase` and `sentry-cli` are thin wrappers and are not run in
 tests; the build pipeline was smoke-tested against a fake `flutter` script.

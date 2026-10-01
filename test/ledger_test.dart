@@ -156,11 +156,19 @@ void main() {
   });
 
   group('BuildManager.delete', () {
-    test('removes the folder, the row, and empty parent folders', () async {
-      final dir =
-          Directory(p.join(ledger.rootDir, 'my_app', 'dev', 'release', 'v1'));
-      await dir.create(recursive: true);
+    Future<Directory> makeBuild(String id, String rel) async {
+      final dir = Directory(p.join(ledger.rootDir, rel));
+      await Directory(p.join(dir.path, 'symbols', 'dart'))
+          .create(recursive: true);
       await File(p.join(dir.path, 'a.aab')).writeAsString('x');
+      await File(p.join(dir.path, 'symbols', 'dart', 'app.symbols'))
+          .writeAsString('sym');
+      return dir;
+    }
+
+    test('unreleased: removes folder, symbols, row and empty parents',
+        () async {
+      final dir = await makeBuild('a', 'my_app/dev/release/v1');
       final r = record('a', outputDir: 'my_app/dev/release/v1');
       await ledger.add(r);
 
@@ -174,14 +182,11 @@ void main() {
     });
 
     test('keeps sibling builds and their parents', () async {
-      for (final v in ['v1', 'v2']) {
-        await Directory(p.join(ledger.rootDir, 'my_app', 'dev', 'release', v))
-            .create(recursive: true);
-      }
+      await makeBuild('a', 'my_app/dev/release/v1');
+      await makeBuild('b', 'my_app/dev/release/v2');
       final a = record('a', outputDir: 'my_app/dev/release/v1');
-      final b = record('b', outputDir: 'my_app/dev/release/v2');
       await ledger.add(a);
-      await ledger.add(b);
+      await ledger.add(record('b', outputDir: 'my_app/dev/release/v2'));
 
       await BuildManager(ledger).delete([a]);
 
@@ -190,6 +195,63 @@ void main() {
               .existsSync(),
           isTrue);
       expect(ledger.records.map((r) => r.id), ['b']);
+    });
+
+    test('published AAB: files go, symbols and ledger row stay', () async {
+      final dir = await makeBuild('a', 'my_app/dev/release/v1');
+      await File(p.join(ledger.rootDir, 'app', 'dev', 'a.aab'))
+          .create(recursive: true);
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(publishedAt: DateTime.utc(2026, 10, 2));
+      // The artifact path in the helper record is app/dev/a.aab.
+      await ledger.add(r);
+
+      final result = await BuildManager(ledger).delete([r]);
+
+      expect(result.filesOnly, hasLength(1));
+      expect(result.deleted, isEmpty);
+      expect(File(p.join(ledger.rootDir, 'app', 'dev', 'a.aab')).existsSync(),
+          isFalse);
+      expect(
+          File(p.join(dir.path, 'symbols', 'dart', 'app.symbols')).existsSync(),
+          isTrue);
+      final kept = ledger.byId('a')!;
+      expect(kept.artifactsDeleted, isTrue);
+      expect(kept.isPublished, isTrue);
+    });
+
+    test('uploaded to Play counts as released', () async {
+      await makeBuild('a', 'my_app/dev/release/v1');
+      final r = record('a', outputDir: 'my_app/dev/release/v1').copyWith(
+        play: PlayUpload(
+            track: 'internal', uploadedAt: DateTime.utc(2026), viaApi: false),
+      );
+      await ledger.add(r);
+      final result = await BuildManager(ledger).delete([r]);
+      expect(result.filesOnly, hasLength(1));
+      expect(ledger.byId('a'), isNotNull);
+    });
+
+    test('deleting a released build twice is a no-op', () async {
+      await makeBuild('a', 'my_app/dev/release/v1');
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(publishedAt: DateTime.utc(2026));
+      await ledger.add(r);
+      final manager = BuildManager(ledger);
+      await manager.delete([r]);
+      final again = await manager.delete([ledger.byId('a')!]);
+      expect(again.filesOnly, isEmpty);
+      expect(again.deleted, isEmpty);
+    });
+
+    test('artifactsDeletedAt survives a reload', () async {
+      await makeBuild('a', 'my_app/dev/release/v1');
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(publishedAt: DateTime.utc(2026));
+      await ledger.add(r);
+      await BuildManager(ledger).delete([r]);
+      final reopened = await Ledger.open(ledger.file.path);
+      expect(reopened.byId('a')!.artifactsDeleted, isTrue);
     });
 
     test('still removes the row when the folder is already gone', () async {

@@ -46,6 +46,25 @@ class FlutterProject {
     return doc is Map ? doc.cast<Object?, Object?>() : const {};
   }
 
+  bool _hasDependency(String name) {
+    final y = _pubspec();
+    for (final section in ['dependencies', 'dev_dependencies']) {
+      final deps = y[section];
+      if (deps is Map && deps.containsKey(name)) return true;
+    }
+    return false;
+  }
+
+  /// `build_runner` is a dependency, so generated code may need refreshing.
+  bool get usesBuildRunner => _hasDependency('build_runner');
+
+  /// The project uses `flutter gen-l10n` (an l10n.yaml or `generate: true`).
+  bool get usesGenL10n {
+    if (File(p.join(dir, 'l10n.yaml')).existsSync()) return true;
+    final flutter = _pubspec()['flutter'];
+    return flutter is Map && flutter['generate'] == true;
+  }
+
   String get appName => (_pubspec()['name'] as String?) ?? p.basename(dir);
 
   PubspecVersion get version =>
