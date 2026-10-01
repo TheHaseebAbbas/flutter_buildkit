@@ -6,15 +6,19 @@ was built, published, uploaded to Google Play, and symbolicated.
 
 ## Use it in your Flutter projects
 
-Add it as a dev dependency straight from GitHub, in each Flutter project's
-`pubspec.yaml`:
+[![pub package](https://img.shields.io/pub/v/flutter_buildkit.svg)](https://pub.dev/packages/flutter_buildkit)
+
+Add it as a dev dependency in each Flutter project:
+
+```sh
+dart pub add --dev flutter_buildkit
+```
+
+or in `pubspec.yaml`:
 
 ```yaml
 dev_dependencies:
-  flutter_buildkit:
-    git:
-      url: https://github.com/TheHaseebAbbas/flutter_buildkit.git
-      # ref: v0.1.0   # pin a tag or commit when you want reproducible tooling
+  flutter_buildkit: ^0.1.0
 ```
 
 Then, from the project root:
