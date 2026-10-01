@@ -4,14 +4,30 @@ An interactive Dart console app that builds a Flutter project (APK, AAB, IPA),
 files every build in a predictable folder tree, and keeps a **ledger** of what
 was built, published, uploaded to Google Play, and symbolicated.
 
-## Run it
+## Use it in your Flutter projects
+
+Add it as a dev dependency straight from GitHub, in each Flutter project's
+`pubspec.yaml`:
+
+```yaml
+dev_dependencies:
+  flutter_build_ledger:
+    git:
+      url: https://github.com/TheHaseebAbbas/flutter_build_ledger.git
+      # ref: v0.1.0   # pin a tag or commit when you want reproducible tooling
+```
+
+Then, from the project root:
 
 ```sh
-dart pub get
-cd /path/to/your/flutter/project
-dart run /path/to/flutter_build_ledger/bin/flutter_build_ledger.dart
-# or install the command:  dart pub global activate --source path .   ->  fbl
+flutter pub get
+dart run flutter_build_ledger init   # optional: write flutter_build_ledger.yaml
+dart run flutter_build_ledger        # open the menu
 ```
+
+Add `builds/` and `flutter_build_ledger.yaml` to that project's `.gitignore`.
+To work on this repo itself, clone it and run `dart pub get`, then
+`dart run bin/flutter_build_ledger.dart -C /path/to/flutter/project`.
 
 Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`.
 Other commands: `init` (write a starter config), `list`, `export <csv|tsv|json> [file]`.

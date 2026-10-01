@@ -10,3 +10,4 @@ flutter_build_ledger.yaml
 
 # Default output folder when run inside this repo
 builds/
+pubspec.lock

@@ -14,12 +14,12 @@ executables:
   fbl: flutter_build_ledger
 
 dependencies:
-  args: ^2.6.0
-  crypto: ^3.0.6
-  googleapis: ^17.0.0
-  googleapis_auth: ^2.0.0
-  path: ^1.9.0
-  yaml: ^3.1.2
+  args: ^2.4.0
+  crypto: ^3.0.3
+  googleapis: '>=13.0.0 <18.0.0'
+  googleapis_auth: '>=1.6.0 <3.0.0'
+  path: ^1.8.3
+  yaml: ^3.1.0
 
 dev_dependencies:
   lints: ^6.0.0
