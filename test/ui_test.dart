@@ -134,22 +134,113 @@ void main() {
       expect(m.result, [1]);
     });
 
-    test('number keys pick directly; q cancels', () {
-      final m = SelectModel(const [SelectItem('a'), SelectItem('b')]);
-      expect(m.handle(const KeyPress.char('2')), SelectOutcome.submit);
-      expect(m.result, [1]);
+    test('q cancels', () {
       expect(
           SelectModel(const [SelectItem('a')]).handle(const KeyPress.char('q')),
           SelectOutcome.cancel);
     });
 
-    test('a disabled row cannot be picked', () {
+    test('a typed number moves the cursor; Enter picks it', () {
+      final m = SelectModel([for (var i = 0; i < 12; i++) SelectItem('r$i')]);
+      m.handle(const KeyPress.char('1'));
+      m.handle(const KeyPress.char('1'));
+      expect(m.entry, '11');
+      expect(m.cursor, 10);
+      expect(m.handle(const KeyPress(Key.enter)), SelectOutcome.submit);
+      expect(m.result, [10]);
+    });
+
+    test('a bad number shows an error and keeps the list open', () {
+      final m = SelectModel(const [SelectItem('a'), SelectItem('b')]);
+      m.handle(const KeyPress.char('9'));
+      expect(m.handle(const KeyPress(Key.enter)), SelectOutcome.none);
+      expect(m.error, contains('choose 1-2'));
+      expect(m.entry, isEmpty);
+    });
+
+    test('a disabled row cannot be picked by number', () {
       final m = SelectModel(const [
         SelectItem('a', disabled: true),
         SelectItem('b'),
       ]);
-      expect(m.handle(const KeyPress.char('1')), SelectOutcome.none);
+      m.handle(const KeyPress.char('1'));
+      expect(m.handle(const KeyPress(Key.enter)), SelectOutcome.none);
+      expect(m.error, contains('not available'));
     });
+
+    test('Esc clears typed digits before it cancels', () {
+      final m = SelectModel(const [SelectItem('a'), SelectItem('b')]);
+      m.handle(const KeyPress.char('2'));
+      expect(m.handle(const KeyPress(Key.escape)), SelectOutcome.none);
+      expect(m.entry, isEmpty);
+      expect(m.handle(const KeyPress(Key.escape)), SelectOutcome.cancel);
+    });
+  });
+
+  group('SelectModel typed numbers (multi)', () {
+    SelectModel m() =>
+        SelectModel([for (var i = 0; i < 6; i++) SelectItem('r$i')],
+            multi: true, ticked: {5});
+
+    SelectOutcome type(SelectModel model, String text) {
+      for (final c in text.split('')) {
+        model.handle(c == ' ' ? const KeyPress(Key.space) : KeyPress.char(c));
+      }
+      return model.handle(const KeyPress(Key.enter));
+    }
+
+    test('1,3 selects rows 1 and 3 and replaces earlier ticks', () {
+      final model = m();
+      expect(type(model, '1,3'), SelectOutcome.submit);
+      expect(model.result, [0, 2]);
+    });
+
+    test('1-3 is a range', () {
+      final model = m();
+      type(model, '1-3');
+      expect(model.result, [0, 1, 2]);
+    });
+
+    test('Space between numbers works as a separator', () {
+      final model = m();
+      type(model, '2 4');
+      expect(model.result, [1, 3]);
+    });
+
+    test('an out-of-range number is rejected', () {
+      final model = m();
+      expect(type(model, '1,9'), SelectOutcome.none);
+      expect(model.error, isNotNull);
+      expect(model.result, [5], reason: 'ticks are untouched on error');
+    });
+
+    test('Backspace edits the typed numbers', () {
+      final model = m();
+      model.handle(const KeyPress.char('1'));
+      model.handle(const KeyPress.char('2'));
+      model.handle(const KeyPress(Key.backspace));
+      expect(model.entry, '1');
+    });
+  });
+
+  test('parseNumberList', () {
+    expect(parseNumberList('1,3'), [1, 3]);
+    expect(parseNumberList('1-3'), [1, 2, 3]);
+    expect(parseNumberList(' 2  4 '), [2, 4]);
+    expect(parseNumberList('3-1'), isNull);
+    expect(parseNumberList('x'), isNull);
+    expect(parseNumberList(''), isNull);
+  });
+
+  test('endsInIncompleteSequence waits for split arrow keys', () {
+    expect(endsInIncompleteSequence([27]), isTrue);
+    expect(endsInIncompleteSequence([27, 91]), isTrue);
+    expect(endsInIncompleteSequence([27, 91, 49, 59]), isTrue);
+    expect(endsInIncompleteSequence([27, 91, 65]), isFalse);
+    expect(endsInIncompleteSequence([97]), isFalse);
+    expect(endsInIncompleteSequence([97, 27]), isTrue);
+    // The pieces parse as an arrow once joined.
+    expect(parseKeys([27, 91, 65]), [const KeyPress(Key.up)]);
   });
 
   test('renderSelect shows boxes, cursor and a scroll window', () {
@@ -161,9 +252,10 @@ void main() {
     for (var i = 0; i < 15; i++) {
       m.handle(const KeyPress(Key.down));
     }
-    final lines = renderSelect('Pick', m, maxRows: 5, color: false);
+    final lines = renderSelect('Pick', m, maxRows: 5, style: Style.plain);
     expect(lines.first, 'Pick');
-    expect(lines.any((l) => l.startsWith('> [ ] row 15')), isTrue);
+    expect(
+        lines.any((l) => RegExp(r'^> +16 +\[ \] row 15').hasMatch(l)), isTrue);
     expect(lines.any((l) => l.contains('more above')), isTrue);
     expect(lines.any((l) => l.contains('more below')), isTrue);
     expect(lines.length, lessThanOrEqualTo(5 + 4));
@@ -190,6 +282,39 @@ void main() {
       expect(await feed(['a'], out).chooseMany('T', ['a', 'b']), [0, 1]);
       expect(await feed(['none'], out).chooseMany('T', ['a', 'b']), isEmpty);
       expect(await feed([''], out).chooseMany('T', ['a', 'b']), isNull);
+    });
+
+    test('chooseMany accepts ranges and mixed lists', () async {
+      final out = <String>[];
+      expect(await feed(['1-3'], out).chooseMany('T', ['a', 'b', 'c', 'd']),
+          [0, 1, 2]);
+      expect(await feed(['4, 2'], out).chooseMany('T', ['a', 'b', 'c', 'd']),
+          [1, 3]);
+    });
+
+    test('chooseMany Enter keeps pre-ticked rows', () async {
+      final out = <String>[];
+      expect(
+          await feed([''], out).chooseMany('T', ['a', 'b'], ticked: {1}), [1]);
+    });
+
+    test('options can be typed by name instead of number', () async {
+      final out = <String>[];
+      expect(
+          await feed(['staging'], out).choose('T', ['dev', 'staging', 'prod']),
+          1);
+      expect(
+          await feed(['pr'], out).choose('T', ['dev', 'staging', 'prod']), 2);
+      expect(
+          await feed(['dev, prod'], out)
+              .chooseMany('T', ['dev', 'staging', 'prod']),
+          [0, 2]);
+    });
+
+    test('a bad answer asks again', () async {
+      final out = <String>[];
+      expect(await feed(['9', 'x', '2'], out).choose('T', ['a', 'b']), 1);
+      expect(out.join(), contains('Type a number'));
     });
 
     test('chooseMany skips disabled rows for "all"', () async {

@@ -26,6 +26,15 @@ Future<int> main(List<String> arguments) async {
         abbr: 'c',
         help: 'Config file (default: <project>/flutter_buildkit.yaml).')
     ..addOption('ledger', help: 'Ledger file (overrides the config).')
+    ..addOption('ui', help: 'How prompts read input (also FBK_UI).', allowed: [
+      'auto',
+      'keys',
+      'plain'
+    ], allowedHelp: {
+      'auto': 'arrow keys on a terminal, numbers otherwise (default)',
+      'keys': 'always arrow keys',
+      'plain': 'always numbered questions: type 2, or 1,3 for several',
+    })
     ..addFlag('help', abbr: 'h', negatable: false);
 
   final ArgResults args;
@@ -72,7 +81,14 @@ Future<int> main(List<String> arguments) async {
 
     switch (command) {
       case null:
-        await App(project: project, config: config, ledger: ledger).run();
+        final ui = UiMode.parse(
+            args['ui'] as String? ?? Platform.environment['FBK_UI']);
+        await App(
+                project: project,
+                config: config,
+                ledger: ledger,
+                console: Console(mode: ui))
+            .run();
       case 'list':
         final records = ledger.records;
         stdout.writeln(records.isEmpty

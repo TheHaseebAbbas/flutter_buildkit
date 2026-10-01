@@ -1,4 +1,26 @@
 import 'keys.dart';
+import 'style.dart';
+
+/// Parses `1,3`, `1-3` or `1 3` into the numbers they name (1-based), or null
+/// when the text is not a number list.
+List<int>? parseNumberList(String text) {
+  final out = <int>[];
+  for (final part in text.trim().split(RegExp(r'[,\s]+'))) {
+    if (part.isEmpty) continue;
+    final range = RegExp(r'^(\d+)-(\d+)$').firstMatch(part);
+    if (range != null) {
+      final a = int.parse(range.group(1)!);
+      final b = int.parse(range.group(2)!);
+      if (a > b || b - a > 1000) return null;
+      out.addAll([for (var n = a; n <= b; n++) n]);
+    } else {
+      final n = int.tryParse(part);
+      if (n == null) return null;
+      out.add(n);
+    }
+  }
+  return out.isEmpty ? null : out;
+}
 
 class SelectItem {
   const SelectItem(this.label, {this.hint, this.disabled = false});
@@ -8,7 +30,8 @@ class SelectItem {
   /// Dimmed text after the label.
   final String? hint;
 
-  /// Shown but cannot be chosen or ticked (e.g. a protected build).
+  /// Shown but cannot be chosen or ticked (e.g. a build with nothing left
+  /// to delete).
   final bool disabled;
 }
 
@@ -20,6 +43,9 @@ enum SelectOutcome { none, submit, cancel }
 /// Keys: Up/Down (or k/j), PgUp/PgDn, Home/End move; Space ticks (multi) or
 /// picks (single); Enter confirms; `a` ticks all, `n` none, `i` inverts
 /// (multi); `/` filters by typing; Esc or `q` cancels.
+///
+/// Numbers always work too: type `2` (or `1,3` / `1-3` / `1 3` for several)
+/// and press Enter. The numbers are the ones shown next to the rows.
 class SelectModel {
   SelectModel(this.items, {this.multi = false, int? initial, Set<int>? ticked})
       : selected = {...?ticked} {
@@ -40,6 +66,12 @@ class SelectModel {
   String filter = '';
   bool filtering = false;
 
+  /// Digits typed so far (`1,3`), applied on Enter.
+  String entry = '';
+
+  /// Why the last typed numbers were rejected.
+  String? error;
+
   /// Indexes of [items] that match the filter.
   List<int> get visible => [
         for (var i = 0; i < items.length; i++)
@@ -57,11 +89,14 @@ class SelectModel {
   List<int> get result => selected.toList()..sort();
 
   SelectOutcome handle(KeyPress k) {
+    error = null;
     if (filtering) return _handleFilter(k);
     switch (k.key) {
       case Key.up:
+        entry = '';
         _step(-1);
       case Key.down:
+        entry = '';
         _step(1);
       case Key.pageUp:
         _step(-8);
@@ -72,8 +107,15 @@ class SelectModel {
       case Key.end:
         _jump(first: false);
       case Key.escape:
+        if (entry.isNotEmpty) {
+          entry = '';
+          return SelectOutcome.none;
+        }
         return SelectOutcome.cancel;
+      case Key.backspace:
+        if (entry.isNotEmpty) entry = entry.substring(0, entry.length - 1);
       case Key.enter:
+        if (entry.isNotEmpty) return _applyEntry();
         if (multi) return SelectOutcome.submit;
         if (_canPick(cursor)) {
           selected
@@ -82,7 +124,9 @@ class SelectModel {
           return SelectOutcome.submit;
         }
       case Key.space:
-        if (!multi) {
+        if (entry.isNotEmpty) {
+          entry += ',';
+        } else if (!multi) {
           if (_canPick(cursor)) {
             selected
               ..clear()
@@ -101,6 +145,13 @@ class SelectModel {
   }
 
   SelectOutcome _handleChar(String c) {
+    // Digits start or extend a typed number list.
+    if (RegExp(r'^[0-9]$').hasMatch(c) ||
+        (entry.isNotEmpty && (c == ',' || c == '-'))) {
+      entry += c;
+      if (!multi) _previewEntry();
+      return SelectOutcome.none;
+    }
     switch (c) {
       case 'k':
         _step(-1);
@@ -118,20 +169,48 @@ class SelectModel {
         for (final i in _enabledVisible) {
           if (!selected.remove(i)) selected.add(i);
         }
-      default:
-        // 1-9 jump to that row; in single mode they also pick it.
-        final n = int.tryParse(c);
-        if (n != null && n >= 1 && n <= visible.length) {
-          cursor = visible[n - 1];
-          if (!multi && _canPick(cursor)) {
-            selected
-              ..clear()
-              ..add(cursor);
-            return SelectOutcome.submit;
-          }
-        }
     }
     return SelectOutcome.none;
+  }
+
+  /// In single select, typing a number moves the cursor to that row.
+  void _previewEntry() {
+    final n = int.tryParse(entry);
+    final v = visible;
+    if (n != null && n >= 1 && n <= v.length) cursor = v[n - 1];
+  }
+
+  SelectOutcome _applyEntry() {
+    final text = entry;
+    entry = '';
+    final numbers = parseNumberList(text);
+    final v = visible;
+    if (numbers == null) {
+      error = 'Not a valid number list: $text';
+      return SelectOutcome.none;
+    }
+    final bad = numbers.where((n) => n < 1 || n > v.length).toList();
+    if (bad.isNotEmpty) {
+      error = 'No row ${bad.first}; choose 1-${v.length}';
+      return SelectOutcome.none;
+    }
+    final picked = [for (final n in numbers) v[n - 1]];
+    final disabled = picked.where((i) => items[i].disabled).toList();
+    if (disabled.isNotEmpty) {
+      error = 'Row ${v.indexOf(disabled.first) + 1} is not available';
+      return SelectOutcome.none;
+    }
+    if (!multi) {
+      cursor = picked.first;
+      selected
+        ..clear()
+        ..add(cursor);
+      return SelectOutcome.submit;
+    }
+    selected
+      ..clear()
+      ..addAll(picked);
+    return SelectOutcome.submit;
   }
 
   SelectOutcome _handleFilter(KeyPress k) {
@@ -205,19 +284,16 @@ List<String> renderSelect(
   String title,
   SelectModel m, {
   int maxRows = 12,
-  bool color = true,
+  Style style = Style.plain,
 }) {
-  String dim(String s) => color ? '\x1b[2m$s\x1b[0m' : s;
-  String bold(String s) => color ? '\x1b[1m$s\x1b[0m' : s;
-  String cyan(String s) => color ? '\x1b[36m$s\x1b[0m' : s;
-
   final v = m.visible;
-  final lines = <String>[bold(title)];
+  final width = '${v.length}'.length;
+  final lines = <String>[style.boldCyan(title)];
   if (m.filtering || m.filter.isNotEmpty) {
-    lines.add('  Filter: ${m.filter}${m.filtering ? '_' : ''}');
+    lines.add('  ${style.dim('filter')} ${m.filter}${m.filtering ? '_' : ''}');
   }
   if (v.isEmpty) {
-    lines.add(dim('  (nothing matches)'));
+    lines.add(style.dim('  (nothing matches)'));
   } else {
     final cursorPos = v.indexOf(m.cursor).clamp(0, v.length - 1);
     var start = 0;
@@ -225,33 +301,47 @@ List<String> renderSelect(
       start = (cursorPos - maxRows ~/ 2).clamp(0, v.length - maxRows);
     }
     final end = (start + maxRows).clamp(0, v.length);
-    if (start > 0) lines.add(dim('  ... $start more above'));
+    if (start > 0) lines.add(style.dim('    ... $start more above'));
     for (var p = start; p < end; p++) {
       final i = v[p];
       final item = m.items[i];
       final here = i == m.cursor;
+      final num = '${p + 1}'.padLeft(width);
+      final ticked = m.selected.contains(i);
       final box = m.multi
           ? (item.disabled
-              ? '[-] '
-              : (m.selected.contains(i) ? '[x] ' : '[ ] '))
+              ? style.dim('[-] ')
+              : (ticked ? '${style.green('[x]')} ' : '[ ] '))
           : '';
-      var text = '${here ? '>' : ' '} $box${item.label}';
-      if (item.hint != null) text += '  ${dim(item.hint!)}';
+      final pointer = here ? style.cyan(style.pointer) : ' ';
+      var label = item.label;
       if (item.disabled) {
-        text = dim(text);
+        label = style.dim(label);
       } else if (here) {
-        text = cyan(text);
+        label = style.bold(label);
+      } else if (ticked) {
+        label = style.green(label);
       }
+      var text = '$pointer ${style.dim(num)}  $box$label';
+      if (item.hint != null) text += '  ${style.dim(item.hint!)}';
       lines.add(text);
     }
-    if (end < v.length) lines.add(dim('  ... ${v.length - end} more below'));
+    if (end < v.length) {
+      lines.add(style.dim('    ... ${v.length - end} more below'));
+    }
   }
+  if (m.entry.isNotEmpty) {
+    lines.add('  ${style.cyan('number')} ${m.entry}_');
+  }
+  if (m.error != null) lines.add('  ${style.red(m.error!)}');
   final help = m.filtering
       ? 'type to filter, Enter keep, Esc clear'
       : m.multi
-          ? 'Up/Down move, Space tick, a all, n none, i invert, / filter, '
-              'Enter confirm (${m.selected.length} ticked), Esc cancel'
-          : 'Up/Down move, Enter choose, / filter, Esc back';
-  lines.add(dim('  $help'));
+          ? 'arrows move, Space tick, a all, n none, i invert, / filter; or '
+              'type numbers (1,3 or 1-3) and Enter. Enter confirms '
+              '(${m.selected.length} ticked), Esc cancels'
+          : 'arrows move, Enter choose, / filter; or type a number and Enter. '
+              'Esc goes back';
+  lines.add(style.dim('  $help'));
   return lines;
 }

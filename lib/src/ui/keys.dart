@@ -115,3 +115,18 @@ List<KeyPress> parseKeys(List<int> bytes) {
   }
   return keys;
 }
+
+/// True when [bytes] ends in the middle of an escape sequence (a lone ESC, or
+/// `ESC [` without its final byte). Terminals normally deliver a whole
+/// sequence at once, but over a slow link the rest can arrive in a later
+/// read, so the caller should wait briefly for more bytes before deciding.
+bool endsInIncompleteSequence(List<int> bytes) {
+  final i = bytes.lastIndexOf(27);
+  if (i < 0) return false;
+  final tail = bytes.sublist(i);
+  if (tail.length == 1) return true;
+  if (tail[1] != 91 && tail[1] != 79) return false;
+  if (tail.length == 2) return true;
+  // CSI parameters (digits and ;) without the final letter.
+  return tail.skip(2).every((b) => b >= 0x30 && b <= 0x3F);
+}

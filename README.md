@@ -29,13 +29,16 @@ Add `app_builds/` and `flutter_buildkit.yaml` to that project's `.gitignore`.
 To work on this repo itself, clone it and run `dart pub get`, then
 `dart run bin/flutter_buildkit.dart -C /path/to/flutter/project`.
 
-Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`.
+Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`, `--ui auto|keys|plain`.
 Other commands: `init` (write a starter config), `list`, `export <csv|tsv|json> [file]`.
 
 ## Using the menu
 
-On a terminal every list is arrow-key driven (plain numbered questions are
-used instead when input is piped):
+Every list works two ways, so you are never stuck:
+
+* **Numbers.** Type the number shown next to a row and press Enter. For
+  several rows in a multi select type `1,3`, `1-3` or `1 3` and press Enter.
+* **Keys.** On a terminal you can also use the arrows:
 
 | Key | Does |
 |---|---|
@@ -44,8 +47,13 @@ used instead when input is piped):
 | Space | Tick or untick a row (multi select) |
 | `a` / `n` / `i` | Tick all, none, or invert the visible rows |
 | `/` | Filter the list by typing (Esc clears) |
-| `1`-`9` | Jump to that row (single select) |
+| Digits, `,` and `-` | Type row numbers, then Enter |
 | Esc or `q` | Back / cancel; Ctrl-C quits |
+
+Arrow keys are used automatically on macOS and Linux terminals. Piped input,
+`TERM=dumb` and Windows use plain numbered questions (numbers, ranges, or the
+start of an option's name). Force a mode with `--ui plain` or `--ui keys`
+(or `FBK_UI=plain`). Colors follow the terminal and honour `NO_COLOR`.
 
 | Item | What it does |
 |---|---|

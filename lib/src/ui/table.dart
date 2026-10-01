@@ -1,17 +1,35 @@
-/// Renders [rows] as an aligned plain-text table.
-String renderTable(List<String> header, List<List<String>> rows) {
+import 'style.dart';
+
+/// Renders [rows] as an aligned table. Cells are padded on their plain text
+/// first, then [decorate] may color them, so ANSI codes never break the
+/// alignment.
+String renderTable(
+  List<String> header,
+  List<List<String>> rows, {
+  Style style = Style.plain,
+  String Function(int column, String paddedCell)? decorate,
+}) {
   final widths = [
     for (var c = 0; c < header.length; c++)
       [header[c], ...rows.map((r) => r[c])]
           .map((s) => s.length)
           .reduce((a, b) => a > b ? a : b),
   ];
-  String line(List<String> cells) => [
-        for (var c = 0; c < cells.length; c++) cells[c].padRight(widths[c]),
-      ].join('  ').trimRight();
+  String line(List<String> cells, {bool head = false}) {
+    final parts = [
+      for (var c = 0; c < cells.length; c++)
+        () {
+          final padded = cells[c].padRight(widths[c]);
+          if (head) return style.bold(padded);
+          return decorate == null ? padded : decorate(c, padded);
+        }(),
+    ];
+    return parts.join('  ').trimRight();
+  }
+
   return [
-    line(header),
-    line([for (final w in widths) '-' * w]),
+    line(header, head: true),
+    style.dim([for (final w in widths) style.rule * w].join('  ')),
     ...rows.map(line),
   ].join('\n');
 }

@@ -34,10 +34,10 @@ class App {
   late final _manager = BuildManager(ledger);
 
   Future<void> run() async {
-    console
-      ..heading('Flutter Buildkit')
-      ..out('Project: ${project.appName} (${project.dir})')
-      ..out('Ledger:  ${ledger.file.path}  (${ledger.records.length} builds)');
+    console.banner('Flutter Buildkit', [
+      'Project  ${project.appName}  (${project.dir})',
+      'Ledger   ${ledger.file.path}  (${ledger.records.length} builds)',
+    ]);
     while (true) {
       final choice = await console.choose(
         'Main menu',
@@ -97,7 +97,7 @@ class App {
             e is! FileSystemException) {
           rethrow;
         }
-        console.out('\nError: $e');
+        console.error('$e');
       }
     }
   }
@@ -176,16 +176,22 @@ class App {
     ];
 
     console
-      ..out('')
-      ..out('  App:       ${project.appName}')
-      ..out('  Version:   $name+$code')
-      ..out(
-          '  Before:    ${preSteps.isEmpty ? 'nothing' : preSteps.map((s) => s.label).join(', ')}')
-      ..out('  Builds (${requests.length}):');
+      ..heading('Plan')
+      ..kv('App', project.appName)
+      ..kv('Version', '$name+$code')
+      ..kv(
+          'Before',
+          preSteps.isEmpty
+              ? 'nothing'
+              : preSteps.map((s) => s.label).join(', '))
+      ..kv('Builds', '${requests.length}');
     for (final r in requests) {
-      console.out('    ${r.flavor ?? 'default'}  ${r.mode.name}  ${r.type.name}'
-          '${r.willObfuscate ? '' : '  (no symbols: not obfuscated)'}');
+      console.out('  ${console.style.cyan(console.style.bullet)} '
+          '${(r.flavor ?? 'default').padRight(12)} ${r.mode.name.padRight(8)} '
+          '${r.type.name}'
+          '${r.willObfuscate ? '' : console.style.dim('  (not obfuscated: no Dart symbols)')}');
     }
+    console.blank();
     if (!await console.confirm('Start?', defaultValue: true)) return;
 
     List<String> ran = const [];
@@ -201,21 +207,24 @@ class App {
     final failed = <String>[];
     for (final r in requests) {
       final label = '${r.flavor ?? 'default'} ${r.mode.name} ${r.type.name}';
-      console.out('\n--- $label ---');
+      console.heading('Building $label');
       try {
         done.add(await builder.build(_withPreBuild(r, ran)));
       } on BuildException catch (e) {
         failed.add('$label: $e');
-        console.out('Error: $e');
+        console.error('$e');
       }
     }
 
-    console.out('\nFinished: ${done.length} built, ${failed.length} failed.');
-    for (final r in done) {
-      console.out('  ${ledger.resolve(r.outputDir)}');
+    console.heading('Finished');
+    if (done.isNotEmpty) {
+      console.success('${done.length} built');
+      for (final r in done) {
+        console.out('    ${console.style.dim(ledger.resolve(r.outputDir))}');
+      }
     }
     for (final f in failed) {
-      console.out('  FAILED $f');
+      console.error('FAILED $f');
     }
   }
 
@@ -290,7 +299,7 @@ class App {
       console.out('The ledger is empty.');
       return;
     }
-    console.out(renderTable(_header, [
+    final rows = [
       for (var i = 0; i < records.length; i++)
         [
           '${i + 1}',
@@ -303,7 +312,27 @@ class App {
           records[i].artifactsDeleted ? '-' : formatBytes(records[i].totalSize),
           _status(records[i]),
         ],
-    ]));
+    ];
+    final st = console.style;
+    console.out(renderTable(_header, rows, style: st, decorate: (col, cell) {
+      switch (col) {
+        case 0:
+          return st.dim(cell);
+        case 4:
+          return cell.startsWith('release')
+              ? st.green(cell)
+              : cell.startsWith('profile')
+                  ? st.yellow(cell)
+                  : st.dim(cell);
+        case 8:
+          return cell
+              .replaceAllMapped(RegExp('published'), (m) => st.green(m[0]!))
+              .replaceAllMapped(RegExp(r'play:\w+'), (m) => st.blue(m[0]!))
+              .replaceAllMapped(RegExp(r'sym:\w+'), (m) => st.magenta(m[0]!))
+              .replaceAllMapped(RegExp('files deleted'), (m) => st.dim(m[0]!));
+      }
+      return cell;
+    }));
   }
 
   String _label(BuildRecord r) =>
@@ -361,31 +390,48 @@ class App {
         .availableKinds(r)
         .map((k) => k.name)
         .join(', ');
+    final play = r.play;
     console
       ..heading('Build ${r.id}')
-      ..out(
-          'App:         ${r.appName}${r.packageName == null ? '' : ' (${r.packageName})'}')
-      ..out('Flavor:      ${r.flavorLabel}')
-      ..out('Mode / type: ${r.mode.name} / ${r.type.name}')
-      ..out('Version:     ${r.version}')
-      ..out('Built:       ${r.createdAt.toLocal()}')
-      ..out('Folder:      ${ledger.resolve(r.outputDir)}')
-      ..out('Git:         ${r.gitCommit ?? '-'} on ${r.gitBranch ?? '-'}')
-      ..out('Flutter:     ${r.flutterVersion ?? '-'}')
-      ..out('Before build: ${r.preBuild.isEmpty ? '-' : r.preBuild.join(', ')}')
-      ..out('Obfuscated:  ${r.obfuscated}')
-      ..out('Published:   ${r.publishedAt?.toLocal() ?? 'no'}')
-      ..out(
-          'Google Play: ${r.play == null ? 'no' : '${r.play!.track} at ${r.play!.uploadedAt.toLocal()} (${r.play!.viaApi ? 'via API' : 'marked manually'})'}')
-      ..out(
-          'Symbols:     ${symbols.isEmpty ? 'none stored' : 'stored for $symbols'}; uploaded: ${r.symbolUploads.isEmpty ? 'nowhere' : r.symbolUploads.entries.map((e) => '${e.key} ${e.value.toLocal()}').join(', ')}');
+      ..kv('App',
+          '${r.appName}${r.packageName == null ? '' : ' (${r.packageName})'}')
+      ..kv('Flavor', r.flavorLabel)
+      ..kv('Mode / type', '${r.mode.name} / ${r.type.name}')
+      ..kv('Version', r.version)
+      ..kv('Built', '${r.createdAt.toLocal()}')
+      ..kv('Folder', ledger.resolve(r.outputDir))
+      ..kv('Git', '${r.gitCommit ?? '-'} on ${r.gitBranch ?? '-'}')
+      ..kv('Flutter', r.flutterVersion ?? '-')
+      ..kv('Before build', r.preBuild.isEmpty ? '-' : r.preBuild.join(', '))
+      ..kv('Obfuscated', '${r.obfuscated}')
+      ..kv(
+          'Published',
+          r.publishedAt == null
+              ? 'no'
+              : console.style.green('${r.publishedAt!.toLocal()}'))
+      ..kv(
+          'Google Play',
+          play == null
+              ? 'no'
+              : console.style.blue(
+                  '${play.track} at ${play.uploadedAt.toLocal()} (${play.viaApi ? 'via API' : 'marked manually'})'))
+      ..kv('Symbols', symbols.isEmpty ? 'none stored' : 'stored for $symbols')
+      ..kv(
+          'Symbols sent',
+          r.symbolUploads.isEmpty
+              ? 'nowhere'
+              : r.symbolUploads.entries
+                  .map((e) => '${e.key} ${e.value.toLocal()}')
+                  .join(', '));
     if (r.artifactsDeleted) {
-      console.out('Files:       deleted ${r.artifactsDeletedAt!.toLocal()} '
-          '(symbols and this entry are kept)');
+      console.kv(
+          'Files',
+          console.style.yellow('deleted ${r.artifactsDeletedAt!.toLocal()}') +
+              console.style.dim(' (symbols and this entry are kept)'));
     }
     for (final a in r.artifacts) {
-      console.out(
-          'Artifact:    ${a.path} (${formatBytes(a.sizeBytes)}) sha256 ${a.sha256}');
+      console.kv('Artifact',
+          '${a.path} (${formatBytes(a.sizeBytes)})\n${' ' * 14}${console.style.dim('sha256 ${a.sha256}')}');
     }
   }
 
@@ -413,7 +459,8 @@ class App {
         await _manager.unmarkPublished(r);
       }
     }
-    console.out('${marking ? 'Marked' : 'Cleared'} ${picks.length} build(s).');
+    console
+        .success('${marking ? 'Marked' : 'Cleared'} ${picks.length} build(s).');
   }
 
   Future<void> _play() async {
@@ -458,7 +505,8 @@ class App {
             track: track,
             releaseStatus: status == 0 ? 'completed' : 'draft',
             releaseNotes: notes);
-        console.out('Uploaded to the $track track and recorded in the ledger.');
+        console.success(
+            'Uploaded to the $track track and recorded in the ledger.');
         return;
       }
     } else {
@@ -466,7 +514,7 @@ class App {
           'AAB file and Play credentials, see README). Marking the ledger only.');
     }
     await publisher.markUploaded(r, track: track);
-    console.out('Marked as uploaded to the $track track.');
+    console.success('Marked as uploaded to the $track track.');
   }
 
   Future<void> _symbols() async {
@@ -497,7 +545,7 @@ class App {
           console.out(
               '${r.version} (${r.flavorLabel}): uploaded to ${targets[i]}.');
         } on SymbolUploadException catch (e) {
-          console.out('${r.version} (${r.flavorLabel}) ${targets[i]}: $e');
+          console.error('${r.version} (${r.flavorLabel}) ${targets[i]}: $e');
         }
       }
     }
@@ -524,7 +572,7 @@ class App {
     } else {
       final f = File(path);
       if (!f.existsSync()) {
-        console.out('File not found: $path');
+        console.error('File not found: $path');
         return;
       }
       text = f.readAsStringSync();
@@ -551,12 +599,12 @@ class App {
       ..heading('De-obfuscated trace (${kind.name})')
       ..out(result.output.isEmpty ? '(no output)' : result.output);
     if (result.exitCode != 0) {
-      console.out('\nThe tool exited with code ${result.exitCode}.');
+      console.warn('The tool exited with code ${result.exitCode}.');
     }
     final save = await console.ask('Save to a file (Enter to skip)');
     if (save != null && save.isNotEmpty) {
       File(save).writeAsStringSync('${result.output}\n');
-      console.out('Wrote $save');
+      console.success('Wrote $save');
     }
   }
 
@@ -574,18 +622,18 @@ class App {
     final full = picks.where((r) => !r.isReleased).toList();
     final filesOnly = picks.where((r) => r.isReleased).toList();
     if (full.isNotEmpty) {
-      console.out('\nDeleted completely (folder, symbols and ledger row):');
+      console.warn('Deleted completely (folder, symbols and ledger row):');
       for (final r in full) {
         console.out('  ${ledger.resolve(r.outputDir)}');
       }
       final lost = full.where((r) => r.obfuscated && r.symbolUploads.isEmpty);
       if (lost.isNotEmpty) {
-        console.out('  Note: ${lost.length} obfuscated build(s) have no '
-            'symbols uploaded; their only copy of the symbols goes too.');
+        console.warn('${lost.length} obfuscated build(s) have no symbols '
+            'uploaded; their only copy of the symbols goes too.');
       }
     }
     if (filesOnly.isNotEmpty) {
-      console.out('\nReleased builds: only the APK/AAB/IPA files are deleted. '
+      console.note('Released builds: only the APK/AAB/IPA files are deleted. '
           'Symbols, mappings and the ledger row stay:');
       for (final r in filesOnly) {
         console.out('  ${r.artifacts.map((a) => a.path).join(', ')}');
@@ -594,10 +642,11 @@ class App {
     if (!await console.confirm('Delete ${picks.length} build(s)?')) return;
 
     final result = await _manager.delete(picks);
-    console.out('Removed ${result.deleted.length} build(s) completely and '
+    console.success('Removed ${result.deleted.length} build(s) completely and '
         'the files of ${result.filesOnly.length} released build(s).');
     for (final e in result.failed.entries) {
-      console.out('Could not delete ${e.key.id}: ${e.value} (ledger row kept)');
+      console
+          .error('Could not delete ${e.key.id}: ${e.value} (ledger row kept)');
     }
   }
 
@@ -623,6 +672,6 @@ class App {
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString(const LedgerExporter().export(records, format));
-    console.out('Wrote ${records.length} builds to ${file.absolute.path}');
+    console.success('Wrote ${records.length} builds to ${file.absolute.path}');
   }
 }
