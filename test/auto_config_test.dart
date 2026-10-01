@@ -57,8 +57,8 @@ android {
   }
 }
 ''');
-      write('lib/main_dev.dart', '');
-      write('lib/main_prod.dart', '');
+      write('lib/main_dev.dart', 'void main() {}');
+      write('lib/main_prod.dart', 'void main() {}');
       write('config/dev.json', '{}');
       write('android/app/src/dev/google-services.json', '''
 {"client":[{"client_info":{"mobilesdk_app_id":"1:123:android:abc",
@@ -110,7 +110,7 @@ android {
     });
 
     test('extra main files become entry points per flavor', () {
-      write('lib/main_admin.dart', '');
+      write('lib/main_admin.dart', 'void main() {}');
       final f = found();
       expect(f['flavors.dev.entry_points.main'], 'lib/main_dev.dart');
       expect(f['flavors.dev.entry_points.admin'], 'lib/main_admin.dart');
@@ -150,7 +150,7 @@ android {
         'name: demo\nversion: 1.2.0+5\ndev_dependencies:\n  build_runner: ^2.0.0\n');
     write('android/app/build.gradle',
         'android { productFlavors { dev { } prod { } } }');
-    write('lib/main_dev.dart', '');
+    write('lib/main_dev.dart', 'void main() {}');
     final out = StringBuffer();
     final lines = [
       '', // Enter keeps the ticked suggestions

@@ -1,8 +1,5 @@
-import 'dart:io';
-
-import 'package:path/path.dart' as p;
-
 import 'config.dart';
+import 'dart_entries.dart';
 import 'flutter_project.dart';
 
 /// One Dart file to build. [name] is null for the default entry point, which
@@ -29,27 +26,17 @@ class EntryPoint {
   int get hashCode => Object.hash(name, path);
 }
 
-/// `lib/main_*.dart` files that are not the default or a flavor's own main:
-/// `main_admin.dart` becomes the entry point `admin`.
+/// Dart files with a `main()` anywhere in the project that are not the
+/// default (`lib/main.dart`) or a flavor's own main: `main_admin.dart`
+/// becomes the entry point `admin`.
 Map<String, String> detectEntryPoints(
     FlutterProject project, Iterable<String> flavors) {
-  final lib = Directory(p.join(project.dir, 'lib'));
-  if (!lib.existsSync()) return const {};
-  final flavorNames = {for (final f in flavors) f.toLowerCase()};
-  final found = <String, String>{};
-  final files = lib
-      .listSync()
-      .whereType<File>()
-      .map((f) => p.basename(f.path))
-      .where((n) => RegExp(r'^main_[A-Za-z0-9_-]+\.dart$').hasMatch(n))
-      .toList()
-    ..sort();
-  for (final file in files) {
-    final name = file.substring('main_'.length, file.length - '.dart'.length);
-    if (flavorNames.contains(name.toLowerCase())) continue;
-    found[name] = 'lib/$file';
-  }
-  return found;
+  final flavorKeys = {for (final f in flavors) normalizeName(f)};
+  return {
+    for (final e in project.dartEntries)
+      if (e.name != null && !flavorKeys.contains(normalizeName(e.name!)))
+        e.name!: e.path,
+  };
 }
 
 /// The entry points to build for [flavor], in menu order.

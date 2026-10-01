@@ -128,11 +128,11 @@ reloads the app. It detects:
 
 | Found | Becomes |
 |---|---|
-| Gradle product flavors, Xcode schemes | the flavors, with `lib/main_<flavor>.dart` as `target` |
-| `config/<flavor>.json`, `env/<flavor>.json`, ... | `dart_define_file` |
+| Gradle product flavors, Xcode schemes, `flutter_flavorizr`, `--flavor` in `.vscode/launch.json` | the flavors, with a matching `main_<flavor>.dart` (anywhere in the project) as the entry point |
+| the define file launch.json uses, or `config/<flavor>.json`, `env/<flavor>.json`, ... (matched loosely: `preprod` finds `pre_prod.json`) | `dart_define_file` |
 | `applicationId` (and suffix) per flavor | `package_name` |
 | `google-services.json` | `firebase_app_id` (when `firebase_crashlytics` is used) |
-| extra `lib/main_*.dart` files | `entry_points` |
+| other Dart files with a `main()`, anywhere in the project | `entry_points` |
 | `build_runner`, `l10n.yaml` / `generate: true` | `pre_build.build_runner`, `pre_build.gen_l10n` |
 | `firebase_crashlytics`, `sentry_flutter`, `sentry.properties` | `crashlytics.enabled`, `sentry.enabled`, org, project, url |
 | `.fvmrc` / `.fvm/` | `flutter: fvm flutter` |
@@ -144,6 +144,44 @@ already set in an existing file are not ticked, so they are never overwritten
 by accident. It also offers to add the output folder and the config file to
 `.gitignore`. Secrets are never read into the file: the Sentry auth token
 stays out, and for Play only the key's path is used.
+
+#### Entry points can be anywhere
+
+Entry points are not limited to `lib/main_*.dart`. Every Dart file under
+`lib/` that defines `main()` counts, and so do files named `main.dart`,
+`main_x.dart` or `x_main.dart` in other folders (`apps/kiosk/main_kiosk.dart`),
+plus the `program` of every launch.json configuration. The name comes from
+the file: `main_admin.dart` and `admin_main.dart` give `admin`, a
+`main.dart` inside `lib/admin/` gives `admin`, and two files that would get
+the same name are told apart by their folder. A flavor finds its own main
+loosely (`clientDb` matches `main_client_db.dart`). Platform folders
+(`android`, `ios`, ...), `test`, `integration_test`, `tool`, hidden folders,
+`build/` and generated code (`*.g.dart`, `*.freezed.dart`, ...) are skipped.
+
+### VS Code run configurations
+
+`flutter_buildkit vscode` (also **VS Code launch.json** in the menu, and an
+offer at the end of **Set up from this project**) adds a run configuration for
+every flavor × entry point × mode (debug, profile, release) to
+`.vscode/launch.json`:
+
+```jsonc
+{
+  "name": "CLIENT DB - RELEASE",
+  "request": "launch",
+  "type": "dart",
+  "flutterMode": "release",
+  "args": ["--flavor", "clientDb", "--dart-define-from-file=configs/client_db.json"]
+}
+```
+
+`program` is only written for an entry point other than `lib/main.dart`
+(`"program": "lib/main_legacy.dart"`). The file is edited in place: your
+comments, formatting and other configurations stay, a configuration that
+already runs the same thing (same flavor, mode, program and define file) is
+not added again even under another name, the old file is kept once as
+`launch.json.bak`, and a launch.json that is not valid JSON is never touched.
+Without flavors you get one set of configurations per entry point.
 
 ### Editing the settings from the menu
 

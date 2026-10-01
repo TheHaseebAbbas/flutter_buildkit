@@ -18,15 +18,6 @@ class Suggestion {
   String get key => path.join('.');
 }
 
-const _defineFileDirs = [
-  'config',
-  'configs',
-  'env',
-  'dart_defines',
-  '.env',
-  ''
-];
-
 /// Reads the Flutter project and proposes config values: flavors with their
 /// entry point, dart-define file, package name and Firebase app id, extra
 /// entry points, whether build_runner / gen-l10n / Crashlytics / Sentry are
@@ -101,13 +92,12 @@ List<Suggestion> suggestConfig(FlutterProject project) {
     if (target != null && !hasEntries) {
       out.add(Suggestion(['flavors', f, 'target'], target, 'found $target'));
     }
-    for (final dir in _defineFileDirs) {
-      final rel = dir.isEmpty ? '$f.json' : '$dir/$f.json';
-      if (exists(rel)) {
-        out.add(
-            Suggestion(['flavors', f, 'dart_define_file'], rel, 'found $rel'));
-        break;
-      }
+    final define = project.defineFileFor(f);
+    if (define != null) {
+      final fromLaunch = project.launchConfigs
+          .any((c) => c.flavor == f && c.dartDefineFile == define);
+      out.add(Suggestion(['flavors', f, 'dart_define_file'], define,
+          fromLaunch ? 'used by launch.json for $f' : 'found $define'));
     }
     final package = project.packageName(f);
     if (package != null) {

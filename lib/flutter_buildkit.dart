@@ -24,3 +24,8 @@ export 'src/settings.dart';
 export 'src/ui/settings_screen.dart';
 export 'src/entry_points.dart';
 export 'src/auto_config.dart';
+export 'src/dart_entries.dart';
+export 'src/jsonc.dart';
+export 'src/launch_json.dart';
+export 'src/vscode.dart';
+export 'src/ui/launch_screen.dart';

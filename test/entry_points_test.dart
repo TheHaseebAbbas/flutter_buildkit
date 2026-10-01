@@ -10,8 +10,9 @@ void main() {
   late Directory tmp;
   late FlutterProject project;
 
-  void lib(String name) =>
-      File(p.join(tmp.path, 'lib', name)).createSync(recursive: true);
+  void lib(String name) => File(p.join(tmp.path, 'lib', name))
+    ..createSync(recursive: true)
+    ..writeAsStringSync('void main() {}');
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('fbk_entry_');

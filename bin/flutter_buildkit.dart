@@ -13,6 +13,7 @@ Commands:
   (none)   Open the interactive menu.
   init     Write a starter flutter_buildkit.yaml in the project.
   autoconfig Read the project and write flutter_buildkit.yaml from it.
+  vscode   Add run configurations to .vscode/launch.json.
   settings Edit flutter_buildkit.yaml interactively, with previews.
   config   Show the settings in effect (secrets masked).
   list     Print the ledger as a table.
@@ -130,6 +131,16 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
                 console: Console(mode: ui),
                 ledgerOverride: args['ledger'] as String?)
             .setUpFromProject();
+      case 'vscode':
+        final ui = UiMode.parse(
+            args['ui'] as String? ?? Platform.environment['FBK_UI']);
+        await App(
+                project: project,
+                config: config,
+                ledger: ledger,
+                console: Console(mode: ui),
+                ledgerOverride: args['ledger'] as String?)
+            .createLaunchJson();
       case 'settings':
         final ui = UiMode.parse(
             args['ui'] as String? ?? Platform.environment['FBK_UI']);

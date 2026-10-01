@@ -16,6 +16,7 @@ import 'services/pre_build.dart';
 import 'services/symbol_uploader.dart';
 import 'services/symbolicator.dart';
 import 'ui/console.dart';
+import 'ui/launch_screen.dart';
 import 'ui/settings_screen.dart';
 import 'ui/table.dart';
 
@@ -46,6 +47,11 @@ class App {
     if (await _settings()) {
       console.note('Settings reloaded.');
     }
+  }
+
+  /// Adds run configurations to `.vscode/launch.json`.
+  Future<void> createLaunchJson() async {
+    await runLaunchJsonFlow(console, project, config);
   }
 
   /// Reads the project and writes a config from what it finds.
@@ -99,6 +105,7 @@ class App {
           'Export ledger',
           'Settings',
           'Set up from this project',
+          'VS Code launch.json',
         ],
         hints: [
           'APK / AAB / IPA, many flavors at once',
@@ -112,6 +119,7 @@ class App {
           'CSV, TSV, JSON',
           'edit flutter_buildkit.yaml with previews',
           'detect flavors, entry points, tools; write the config',
+          'run configs per flavor, entry point and mode',
         ],
         backLabel: 'Quit',
       );
@@ -140,6 +148,8 @@ class App {
             await _settings();
           case 10:
             await setUpFromProject();
+          case 11:
+            await createLaunchJson();
         }
       } on Object catch (e) {
         if (e is! BuildException &&

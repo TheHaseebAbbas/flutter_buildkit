@@ -7,6 +7,7 @@ import '../config.dart';
 import '../config_editor.dart';
 import '../flutter_project.dart';
 import '../settings.dart';
+import 'launch_screen.dart';
 import 'console.dart';
 
 /// Interactive editor for `flutter_buildkit.yaml`.
@@ -509,7 +510,15 @@ class SettingsScreen {
     }
     editor = next;
     final saved = await _save(confirm: false);
-    if (saved) await _offerGitignore();
+    if (saved) {
+      await _offerGitignore();
+      if (await console.confirm(
+          'Also create or update .vscode/launch.json with run '
+          'configurations for these flavors and entry points?',
+          defaultValue: true)) {
+        await runLaunchJsonFlow(console, project, _build(editor));
+      }
+    }
     return saved;
   }
 

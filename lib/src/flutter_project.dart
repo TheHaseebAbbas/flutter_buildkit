@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
+import 'dart_entries.dart';
+import 'launch_json.dart';
+
 /// `version: 1.2.3+45` from pubspec.yaml.
 class PubspecVersion {
   const PubspecVersion(this.name, this.code);
@@ -106,20 +109,137 @@ class FlutterProject {
       ..sort();
   }
 
-  /// Android flavors and iOS schemes together, sorted.
-  List<String> get flavors =>
-      {...androidFlavors.map((f) => f.name), ...iosSchemes}.toList()..sort();
+  /// The Dart configurations in `.vscode/launch.json`, empty when there is
+  /// none or it cannot be read.
+  List<LaunchConfig> get launchConfigs {
+    final f = File(p.join(dir, '.vscode', 'launch.json'));
+    if (!f.existsSync()) return const [];
+    try {
+      return parseLaunchConfigs(f.readAsStringSync());
+    } on Object {
+      return const [];
+    }
+  }
 
-  /// `lib/main_<flavor>.dart` when it exists.
+  /// Flavors named under `flavorizr: flavors:` in pubspec.yaml.
+  List<String> get flavorizrFlavors {
+    final z = _pubspec()['flavorizr'];
+    final f = z is Map ? z['flavors'] : null;
+    return f is Map ? [for (final k in f.keys) '$k'] : const [];
+  }
+
+  /// Flavors from Gradle, Xcode schemes, flutter_flavorizr and the
+  /// `--flavor` arguments of launch.json, sorted. Names that only differ in
+  /// case or punctuation count once (Gradle's spelling wins).
+  List<String> get flavors {
+    final seen = <String, String>{};
+    for (final name in [
+      ...androidFlavors.map((f) => f.name),
+      ...iosSchemes,
+      ...flavorizrFlavors,
+      ...launchConfigs.map((c) => c.flavor).whereType<String>(),
+    ]) {
+      seen.putIfAbsent(normalizeName(name), () => name);
+    }
+    return seen.values.toList()..sort();
+  }
+
+  List<DartEntry>? _entries;
+
+  /// Every Dart file that can be run as an app, wherever it is in the
+  /// project (see [scanDartEntries]), plus the `program`s of launch.json.
+  List<DartEntry> get dartEntries => _entries ??= scanDartEntries(dir, extra: [
+        for (final c in launchConfigs)
+          if (c.program != null) c.program!,
+      ]);
+
+  /// The entry point of [flavor]: a `main_<flavor>.dart` (or `<flavor>/main.dart`)
+  /// anywhere in the project, matching the name loosely (`clientDb` finds
+  /// `main_client_db.dart`), or the `program` of a launch.json configuration
+  /// for that flavor.
   String? defaultTarget(String? flavor) {
     if (flavor == null) return null;
-    for (final name in ['main_$flavor.dart', p.join(flavor, 'main.dart')]) {
-      if (File(p.join(dir, 'lib', name)).existsSync()) {
-        return p.join('lib', name).replaceAll(r'\', '/');
+    final key = normalizeName(flavor);
+    final matches = [
+      for (final e in dartEntries)
+        if (e.name != null && normalizeName(e.name!) == key) e.path,
+    ]..sort((a, b) => a.length.compareTo(b.length));
+    if (matches.isNotEmpty) return matches.first;
+    // launch.json: only when every configuration of the flavor names the
+    // same program (one that also runs lib/main.dart means the flavor uses it).
+    final programs = {
+      for (final c in launchConfigs)
+        if (c.flavor != null && normalizeName(c.flavor!) == key) c.program,
+    };
+    if (programs.length == 1 &&
+        programs.single != null &&
+        File(p.join(dir, programs.single!)).existsSync()) {
+      return programs.single;
+    }
+    return null;
+  }
+
+  /// The `--dart-define-from-file` file of [flavor]: the one launch.json uses
+  /// for it, else a JSON file named after it (`dev.json`, `pre_prod.json` for
+  /// `preprod`, `env_dev.json`) in the usual config folders.
+  String? defineFileFor(String flavor) {
+    for (final c in launchConfigs) {
+      final d = c.dartDefineFile;
+      if (c.flavor == flavor &&
+          d != null &&
+          !d.contains(r'${') &&
+          File(p.join(dir, d)).existsSync()) {
+        return d;
+      }
+    }
+    final key = normalizeName(flavor);
+    final stems = {
+      key,
+      'env$key',
+      '${key}env',
+      'config$key',
+      '${key}config',
+      'dartdefine$key',
+      'defines$key',
+    };
+    for (final folder in _defineDirs) {
+      final d = Directory(folder.isEmpty ? dir : p.join(dir, folder));
+      if (!d.existsSync()) continue;
+      List<FileSystemEntity> files;
+      try {
+        files = d.listSync(followLinks: false);
+      } on FileSystemException {
+        continue;
+      }
+      final names = [
+        for (final f in files)
+          if (f is File && f.path.endsWith('.json')) p.basename(f.path),
+      ]..sort();
+      for (final n in names) {
+        if (stems.contains(normalizeName(n.substring(0, n.length - 5)))) {
+          return folder.isEmpty ? n : '$folder/$n';
+        }
       }
     }
     return null;
   }
+
+  static const _defineDirs = [
+    'config',
+    'configs',
+    'env',
+    'envs',
+    '.env',
+    'dart_defines',
+    'dart-define',
+    'defines',
+    'environments',
+    'flavors',
+    'assets/config',
+    'assets/env',
+    'lib/config',
+    '',
+  ];
 
   String? packageName(String? flavor) {
     if (flavor != null) {
