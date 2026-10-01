@@ -32,6 +32,7 @@ class WindowsConsole {
   static const _stdInput = 0xFFFFFFF6; // STD_INPUT_HANDLE  (-10)
   static const _stdOutput = 0xFFFFFFF5; // STD_OUTPUT_HANDLE (-11)
 
+  /// A handle meaning no ANSI support, used when enabling fails.
   static final WindowsConsole unavailable = WindowsConsole._(false, () {});
 
   /// Enables ANSI input/output. Call [restore] before exiting.

@@ -2,19 +2,29 @@ import 'dart:convert';
 
 import '../model/build_record.dart';
 
+/// Output format for exporting ledger rows.
 enum ExportFormat {
+  /// Nested JSON, same shape as the ledger file.
   json('json'),
+
+  /// Flat RFC 4180 CSV.
   csv('csv'),
+
+  /// Flat tab separated values.
   tsv('tsv');
 
   const ExportFormat(this.extension);
+
+  /// File extension for this format, without the dot.
   final String extension;
 }
 
 /// Turns ledger rows into CSV, TSV or JSON text.
 class LedgerExporter {
+  /// Creates an exporter; it holds no state.
   const LedgerExporter();
 
+  /// Column headers of the flat formats, in the order [row] emits values.
   static const columns = [
     'id',
     'created_at',
@@ -52,6 +62,7 @@ class LedgerExporter {
     'notes',
   ];
 
+  /// Renders [records] in the given [format].
   String export(List<BuildRecord> records, ExportFormat format) =>
       switch (format) {
         ExportFormat.json => toJson(records),
@@ -59,6 +70,7 @@ class LedgerExporter {
         ExportFormat.tsv => toTsv(records),
       };
 
+  /// Renders [records] as an indented JSON array of their full ledger form.
   String toJson(List<BuildRecord> records) => const JsonEncoder.withIndent('  ')
       .convert([for (final r in records) r.toJson()]);
 

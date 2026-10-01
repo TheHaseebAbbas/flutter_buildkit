@@ -6,16 +6,27 @@ import 'process_runner.dart';
 
 /// Steps that can run once before a batch of builds.
 enum PreBuildStep {
+  /// Runs `flutter clean`.
   clean('flutter clean'),
+
+  /// Runs `flutter pub run build_runner build`.
   buildRunner('build_runner build'),
+
+  /// Runs `flutter gen-l10n` to generate localization code.
   genL10n('flutter gen-l10n');
 
   const PreBuildStep(this.label);
+
+  /// Creates a step with its display [label].
   final String label;
 }
 
+/// Thrown when a pre-build command cannot start or exits non-zero.
 class PreBuildException implements Exception {
+  /// Creates an exception carrying [message].
   PreBuildException(this.message);
+
+  /// Human-readable description of what went wrong.
   final String message;
   @override
   String toString() => message;
@@ -23,8 +34,13 @@ class PreBuildException implements Exception {
 
 /// One command of the pre-build plan.
 class PreBuildCommand {
+  /// Creates a command with display [label] and argv [command].
   const PreBuildCommand(this.label, this.command);
+
+  /// Short name shown to the user.
   final String label;
+
+  /// Executable and arguments to run.
   final List<String> command;
 }
 
@@ -77,6 +93,7 @@ List<PreBuildCommand> planPreBuild(
 
 /// Runs the pre-build plan; stops at the first failing command.
 class PreBuildRunner {
+  /// Creates a runner for [project] using [config]; [runner] executes commands and [log] receives output.
   PreBuildRunner({
     required this.project,
     required this.config,
@@ -84,9 +101,16 @@ class PreBuildRunner {
     void Function(String)? log,
   }) : log = log ?? ((_) {});
 
+  /// Project whose directory is the working directory for commands.
   final FlutterProject project;
+
+  /// Configuration (flutter command, build_runner arguments).
   final AppConfig config;
+
+  /// Executes the planned commands.
   final ProcessRunner runner;
+
+  /// Receives progress and process output lines.
   final void Function(String) log;
 
   /// Returns the labels of the commands that ran.

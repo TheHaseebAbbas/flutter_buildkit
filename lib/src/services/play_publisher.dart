@@ -8,8 +8,12 @@ import '../ledger/ledger.dart';
 import '../model/build_options.dart';
 import '../model/build_record.dart';
 
+/// Thrown when an upload to Google Play is rejected or cannot be attempted.
 class PlayException implements Exception {
+  /// Creates an exception carrying [message].
   PlayException(this.message);
+
+  /// Human-readable description of what went wrong.
   final String message;
   @override
   String toString() => message;
@@ -22,12 +26,18 @@ class PlayException implements Exception {
 /// permissions for the app in Play Console. Google Play only accepts the
 /// very first upload of a new app through the Play Console.
 class PlayPublisher {
+  /// Creates a publisher using [config] and [ledger]; [log] receives progress lines.
   PlayPublisher(
       {required this.config, required this.ledger, void Function(String)? log})
       : log = log ?? ((_) {});
 
+  /// Configuration holding the `play` settings and service account key path.
   final AppConfig config;
+
+  /// Ledger updated with the upload result.
   final Ledger ledger;
+
+  /// Receives progress lines.
   final void Function(String) log;
 
   /// Uploads the build's AAB to [track] and records it in the ledger.

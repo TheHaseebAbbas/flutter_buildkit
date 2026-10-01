@@ -3,6 +3,7 @@ import 'dart:convert';
 /// Character classes of a JSONC text: which characters are code (outside
 /// strings and comments) and which are inside comments.
 class JsoncScan {
+  /// Scans [text], marking each character as code or comment.
   JsoncScan(this.text)
       : code = List.filled(text.length, false),
         comment = List.filled(text.length, false) {
@@ -32,11 +33,14 @@ class JsoncScan {
     }
   }
 
+  /// The JSONC text that was scanned.
   final String text;
 
   /// True for structural characters (`{ } [ ] , :` and bare values) outside
   /// strings and comments.
   final List<bool> code;
+
+  /// True for characters inside `//` or `/* */` comments.
   final List<bool> comment;
 
   /// Index of the last character that is neither whitespace nor part of a

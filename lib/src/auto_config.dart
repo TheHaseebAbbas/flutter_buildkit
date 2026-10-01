@@ -7,14 +7,19 @@ import 'flutter_project.dart';
 
 /// One value found by reading the project, and why it was chosen.
 class Suggestion {
+  /// Creates a suggestion for the key at [path] with [value] and [reason].
   const Suggestion(this.path, this.value, this.reason);
 
+  /// Config key path, e.g. `['flavors', 'dev', 'target']`.
   final List<String> path;
 
   /// `bool`, `String` or `List<String>`.
   final Object value;
+
+  /// Short explanation shown to the user for why this was suggested.
   final String reason;
 
+  /// The key path joined with dots, e.g. `pre_build.clean`.
   String get key => path.join('.');
 }
 

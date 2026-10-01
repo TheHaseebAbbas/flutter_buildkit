@@ -9,10 +9,18 @@ import 'launch_json.dart';
 
 /// `version: 1.2.3+45` from pubspec.yaml.
 class PubspecVersion {
+  /// Creates a version from its [name] and build number [code].
   const PubspecVersion(this.name, this.code);
+
+  /// Version name, the part before `+` (for example `1.2.3`).
   final String name;
+
+  /// Build number, the part after `+`.
   final int code;
 
+  /// Parses a pubspec `version` value, defaulting to `1.0.0+1` when [value] is null or blank.
+  ///
+  /// A missing or invalid build number becomes 1.
   static PubspecVersion parse(String? value) {
     if (value == null || value.trim().isEmpty) {
       return const PubspecVersion('1.0.0', 1);
@@ -28,7 +36,10 @@ class PubspecVersion {
 
 /// An Android product flavor found in Gradle.
 class GradleFlavor {
+  /// Creates a flavor called [name], with an optional [applicationId].
   const GradleFlavor(this.name, {this.applicationId});
+
+  /// Flavor name as declared in Gradle.
   final String name;
 
   /// Full application id (defaultConfig id plus any suffix), when known.
@@ -37,11 +48,16 @@ class GradleFlavor {
 
 /// What can be learned about a Flutter project from its files.
 class FlutterProject {
+  /// Creates a project rooted at the directory [dir].
   FlutterProject(this.dir);
 
+  /// Root directory of the project.
   final String dir;
 
+  /// The project's `pubspec.yaml`; it may not exist.
   File get pubspecFile => File(p.join(dir, 'pubspec.yaml'));
+
+  /// Whether `pubspec.yaml` exists in [dir].
   bool get isFlutterProject => pubspecFile.existsSync();
 
   Map<Object?, Object?> _pubspec() {
@@ -71,8 +87,10 @@ class FlutterProject {
     return flutter is Map && flutter['generate'] == true;
   }
 
+  /// The pubspec `name`, or the directory name when it has none.
   String get appName => (_pubspec()['name'] as String?) ?? p.basename(dir);
 
+  /// The pubspec `version`, or `1.0.0+1` when missing.
   PubspecVersion get version =>
       PubspecVersion.parse('${_pubspec()['version'] ?? ''}');
 
@@ -84,11 +102,13 @@ class FlutterProject {
     return null;
   }
 
+  /// Product flavors from `android/app/build.gradle(.kts)`; empty when there is no Gradle file.
   List<GradleFlavor> get androidFlavors {
     final f = _gradleFile;
     return f == null ? const [] : parseGradleFlavors(f.readAsStringSync());
   }
 
+  /// Default application id from the Gradle file, or null when it is not found.
   String? get androidApplicationId {
     final f = _gradleFile;
     return f == null ? null : parseDefaultApplicationId(f.readAsStringSync());
@@ -241,6 +261,9 @@ class FlutterProject {
     '',
   ];
 
+  /// Android application id for [flavor], or the default id when the flavor has none.
+  ///
+  /// Null when no id is found.
   String? packageName(String? flavor) {
     if (flavor != null) {
       for (final f in androidFlavors) {

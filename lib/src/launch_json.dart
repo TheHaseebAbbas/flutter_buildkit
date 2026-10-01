@@ -2,6 +2,7 @@ import 'jsonc.dart';
 
 /// One Dart/Flutter configuration read from `.vscode/launch.json`.
 class LaunchConfig {
+  /// Creates a configuration; only [name] is required.
   const LaunchConfig({
     required this.name,
     this.program,
@@ -11,6 +12,7 @@ class LaunchConfig {
     this.args = const [],
   });
 
+  /// The configuration's `name` as shown in VS Code.
   final String name;
 
   /// `program`, or null when the configuration runs `lib/main.dart`.
@@ -24,6 +26,8 @@ class LaunchConfig {
 
   /// Value of `--dart-define-from-file` in the arguments.
   final String? dartDefineFile;
+
+  /// All `args` and `toolArgs` entries, as strings.
   final List<String> args;
 
   /// What makes two configurations run the same thing, whatever they are

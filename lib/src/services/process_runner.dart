@@ -2,6 +2,7 @@ import 'dart:io';
 
 /// Runs external tools (flutter, firebase, sentry-cli). Swappable in tests.
 class ProcessRunner {
+  /// Creates a runner; it holds no state.
   const ProcessRunner();
 
   /// Runs [command] with the terminal attached so the user sees live output.
