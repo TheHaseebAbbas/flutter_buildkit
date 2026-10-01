@@ -1,3 +1,7 @@
+## 0.1.1
+
+- README: install from pub.dev instead of git.
+
 ## 0.1.0
 
 - First release.
