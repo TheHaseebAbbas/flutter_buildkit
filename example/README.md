@@ -7,12 +7,15 @@ flavors, several `main` files, a `launch.json`), uses a fake `flutter` that
 writes the files a real release build would, and deletes everything when it
 ends.
 
-Run any of them from the package root:
+Run the first one now to check your setup:
 
 ```sh
 dart pub get
 dart run example/main.dart
 ```
+
+See [How to run and use the examples](#how-to-run-and-use-the-examples) for the
+full steps.
 
 ## Contents
 
@@ -30,12 +33,130 @@ dart run example/main.dart
 Every file starts with a comment saying what it shows and how to run it, and
 prints titled sections, so the output reads like a walkthrough.
 
+See [How to run and use the examples](#how-to-run-and-use-the-examples) for
+setup, running everything at once, using the code in your own project and
+troubleshooting.
+
 **New here?** Read in this order: `main.dart`, `library_api`, `configuration`,
 `ledger_and_exports`. Pick the rest as you need them.
 
-**Real builds.** The examples pass `FakeFlutter` to `FlutterBuilder` so they run
-anywhere. In your own code leave `runner:` out (it defaults to `ProcessRunner()`),
-or pass `config.flutter` settings such as `fvm flutter` through the config.
+## How to run and use the examples
+
+### 1. Get the code
+
+The examples live in the package repository and in the pub.dev archive. Clone
+the repo, or open the package from your pub cache:
+
+```sh
+git clone https://github.com/TheHaseebAbbas/flutter_buildkit
+cd flutter_buildkit
+dart pub get
+```
+
+You need the [Dart SDK](https://dart.dev/get-dart) 3.5 or newer. Flutter is
+**not** required.
+
+### 2. Run an example
+
+Always run from the package root (the folder with `pubspec.yaml`), using the
+path of the file:
+
+```sh
+dart run example/library_api/build_and_manage.dart
+```
+
+Each example prints titled sections (`== Build every flavor ==`), so the output
+reads top to bottom like a walkthrough. Pipe it to a pager for long ones:
+
+```sh
+dart run example/configuration/load_config.dart | less
+```
+
+Run everything at once to check that all examples work:
+
+```sh
+for f in $(find example -name '*.dart' -not -path '*/_support/*'); do
+  dart run "$f" > /dev/null && echo "ok   $f" || echo "FAIL $f"
+done
+```
+
+In PowerShell:
+
+```powershell
+Get-ChildItem example -Recurse -Filter *.dart |
+  Where-Object { $_.FullName -notmatch '_support' } |
+  ForEach-Object { dart run $_.FullName *> $null; "$LASTEXITCODE $($_.Name)" }
+```
+
+### 3. Read, then change
+
+Open the file you ran, change a value and run it again. Good first edits:
+
+| Example | Try |
+|---|---|
+| `layout_presets.dart` | Change the `layout:` template and see the new folder |
+| `load_config.dart` | Edit a sample YAML in `configuration/` and re-run |
+| `build_and_manage.dart` | Change `ArtifactType.aab` to `apk` or `BuildMode.release` to `debug` |
+| `ledger_and_exports.dart` | Add a third row and compare the CSV and TSV |
+| `autoconfig.dart` | Add `lib/main_kiosk.dart` in `_support/demo.dart` and watch the entry points change |
+
+### 4. Use the pieces in your own project
+
+You do not need this folder to use the package. The examples are patterns to
+copy:
+
+1. Add the package: `dart pub add --dev flutter_buildkit` (or a normal
+   dependency if you build tooling on top of it).
+2. Copy the code you need from an example. Imports are always
+   `package:flutter_buildkit/flutter_buildkit.dart`.
+3. Replace the demo parts, which live in `_support/demo.dart`:
+   - `withDemoProject(...)` -> your real project folder, e.g.
+     `FlutterProject('.')` and `AppConfig.load('.')`.
+   - `FakeFlutter(...)` -> remove the `runner:` argument. `FlutterBuilder` then
+     runs the real `flutter` (or `fvm flutter` via the `flutter:` config key).
+4. Copy a sample from `configuration/` to your project root as
+   `flutter_buildkit.yaml` and adjust it, or run
+   `dart run flutter_buildkit autoconfig` to generate one.
+
+A build in your own project then looks like this:
+
+```dart
+final project = FlutterProject('.');
+final config = AppConfig.load(project.dir);
+final ledger = await Ledger.open(config.ledgerPath);
+
+final record = await FlutterBuilder(
+  project: project,
+  config: config,
+  ledger: ledger,
+  log: print, // show flutter's output
+).build(BuildRequest(
+  type: ArtifactType.aab,
+  mode: BuildMode.release,
+  flavor: 'prod',
+  versionName: project.version.name,
+  versionCode: project.version.code,
+));
+```
+
+### Good to know
+
+- **Nothing is left behind.** Examples work in a temporary folder
+  (`fbk_example_*`) and delete it at the end. Your own files are never touched.
+- **No network, no accounts.** Symbol uploads and Play uploads are shown as
+  dry-run commands only. Use `SymbolUploader.upload` or the menu for real ones.
+- **Command line, not code?** The `cli_and_ui/` examples show the same commands
+  you would type; in a Flutter project run `dart run flutter_buildkit`.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `Could not find package` / unresolved imports | Run `dart pub get` in the package root. |
+| `Could not find ... example/...dart` | Run from the package root, not from inside `example/`. |
+| `cli_walkthrough.dart` cannot find `bin/` | Same: run it from the package root. |
+| A real build says `Could not start "flutter"` | Put Flutter on `PATH`, or set `flutter:` in the config / `FBK_FLUTTER`. |
+| Output shows no colors | Expected: the examples print plain text. The menu honours `NO_COLOR`. |
 
 ## main.dart
 

@@ -245,7 +245,11 @@ dart run example/ledger_and_exports/ledger_and_exports.dart   # ledger + CSV/TSV
 | [`vscode_and_autoconfig`](example/vscode_and_autoconfig) | Project detection and `launch.json` |
 | [`cli_and_ui`](example/cli_and_ui) | CLI commands and the prompt toolkit |
 
-Start with the [example guide](example/README.md).
+To use them: clone the repo, run `dart pub get`, then `dart run <file>` from the
+package root. To use the code in your own project, copy a snippet, import
+`package:flutter_buildkit/flutter_buildkit.dart` and drop the `FakeFlutter`
+runner. Full steps, a run-everything script and troubleshooting are in the
+[example guide](example/README.md#how-to-run-and-use-the-examples).
 
 ## More documentation
 
