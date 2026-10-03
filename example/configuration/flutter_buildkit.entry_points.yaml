@@ -1,0 +1,10 @@
+# One app, several Dart entry points (main files).
+entry_points:                       # shared by every flavor
+  main: lib/main_{flavor}.dart      # {flavor} is filled in per flavor
+  admin: lib/main_admin.dart
+
+flavors:
+  prod:
+    entry_points:                   # prod has its own list instead
+      main: lib/main_prod.dart
+      kiosk: lib/main_prod_kiosk.dart

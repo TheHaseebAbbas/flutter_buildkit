@@ -7,6 +7,9 @@ import 'style.dart';
 
 /// Thrown when the user presses Ctrl-C inside a prompt.
 class ConsoleAbort implements Exception {
+  /// Creates the exception thrown when a prompt is aborted.
+  ConsoleAbort();
+
   @override
   String toString() => 'Aborted.';
 }

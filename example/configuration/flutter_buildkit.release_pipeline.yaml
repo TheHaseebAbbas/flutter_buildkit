@@ -1,0 +1,27 @@
+# A release setup: pinned Flutter through FVM, Play uploads, crash tools.
+flutter: fvm flutter
+output_dir: ../builds               # outside the project: {app}/ is kept in the layout
+output_layout: by-version
+file_name: "{app}_{flavor}_{versionName}_{versionCode}"
+
+obfuscate: true
+split_per_abi: false
+extra_build_args: [--no-tree-shake-icons]
+
+play:
+  # Prefer the PLAY_SERVICE_ACCOUNT_JSON environment variable for the key path.
+  default_track: internal
+  default_release_status: draft
+  upload_mapping: true
+
+crashlytics:
+  enabled: true
+  cli: firebase
+
+sentry:
+  org: my-company                   # token: set SENTRY_AUTH_TOKEN in your shell
+  project: my-app
+
+android:
+  # Only needed when retrace / ndk-stack are not on PATH or in ANDROID_HOME.
+  # retrace: /path/to/Android/Sdk/cmdline-tools/latest/bin/retrace
