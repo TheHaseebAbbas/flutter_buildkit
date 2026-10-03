@@ -1,0 +1,28 @@
+# Several flavors, each with its own entry point, define file and ids.
+output_dir: app_builds
+output_layout: by-flavor            # app_builds/<flavor>/<mode>/<version>-<datetime>/
+obfuscate: true
+
+pre_build:
+  clean: false
+  build_runner: true
+  gen_l10n: true
+
+flavors:
+  dev:
+    target: lib/main_dev.dart
+    dart_define_file: config/dev.json
+    package_name: com.example.app.dev
+    firebase_app_id: 1:1234567890:android:abc123dev
+    sentry_project: my-app-dev
+  staging:
+    target: lib/main_staging.dart
+    dart_define_file: config/staging.json
+    package_name: com.example.app.staging
+  prod:
+    target: lib/main_prod.dart
+    dart_define_file: config/prod.json
+    package_name: com.example.app
+    firebase_app_id: 1:1234567890:android:abc123prod
+    sentry_project: my-app
+    extra_args: [--no-tree-shake-icons]

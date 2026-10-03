@@ -1,0 +1,3 @@
+# The smallest useful config. Everything else uses its default and flavors
+# are detected from Gradle / Xcode.
+output_dir: app_builds

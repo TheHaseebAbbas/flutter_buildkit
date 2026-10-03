@@ -496,7 +496,7 @@ output_dir: app_builds
 #   by-month    {year}-{month}/{app}-{flavor}-{mode}-{version}-{datetime}
 #   flat        {app}-{flavor}-{mode}-{version}-{datetime}
 # A preset starting with {app}/ drops that folder while output_dir is inside
-# the project, and keeps it when output_dir points elsewhere (e.g. ~/builds).
+# the project, and keeps it when output_dir points elsewhere (e.g. ../builds).
 # Tokens: {app} {flavor} {mode} {versionName} {versionCode} {version}
 #         {datetime} {date} {time} {year} {month} {type}
 output_layout: by-flavor

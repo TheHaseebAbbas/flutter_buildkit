@@ -1,3 +1,16 @@
+## 0.1.2
+
+- Added an `example/` folder with runnable examples by topic (library API,
+  configuration, layouts and naming, ledger and exports, symbols and traces,
+  VS Code and auto-configuration, CLI and prompts) and `example/README.md`.
+- README rewritten: shorter, with a table of contents; the full reference moved
+  to `doc/configuration.md`, `doc/project-setup.md` and
+  `doc/builds-and-ledger.md`.
+- Documented the library and `ConsoleAbort`, so every public symbol has docs.
+- Fix: the command line now exits with its error code (64 usage, 66 no
+  project, 74 ledger, 78 config); it always exited 0 before.
+- Docs: `output_dir` does not expand `~`; use an absolute or relative path.
+
 ## 0.1.1
 
 - README: install from pub.dev instead of git.

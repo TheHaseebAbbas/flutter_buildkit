@@ -22,7 +22,12 @@ Commands:
 Options:
 ''';
 
-Future<int> main(List<String> arguments) async {
+// Dart ignores a value returned from main, so the code is set explicitly.
+Future<void> main(List<String> arguments) async {
+  exitCode = await _main(arguments);
+}
+
+Future<int> _main(List<String> arguments) async {
   final parser = ArgParser()
     ..addOption('project',
         abbr: 'C', help: 'Flutter project folder.', defaultsTo: '.')

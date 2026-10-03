@@ -1,3 +1,34 @@
+/// Build Flutter apps (APK, AAB, IPA) from an interactive console menu or
+/// from code, file every build in a predictable folder tree and keep a
+/// ledger of what was built, published, uploaded to Google Play and
+/// symbolicated.
+///
+/// Most people use the command line app:
+///
+/// ```sh
+/// dart pub add --dev flutter_buildkit
+/// dart run flutter_buildkit
+/// ```
+///
+/// The same pieces are available as a library:
+///
+/// * **Configuration**: [AppConfig] reads `flutter_buildkit.yaml`.
+/// * **Projects**: [FlutterProject] finds flavors, entry points, version and
+///   package names.
+/// * **Building**: [FlutterBuilder] runs `flutter build` for a
+///   [BuildRequest] and records the result.
+/// * **Ledger**: [Ledger], [BuildRecord], [BuildManager] and
+///   [LedgerExporter] store, change, delete and export builds.
+/// * **Folders and names**: [BuildPaths], [LayoutPreset] and [PathTemplate].
+/// * **Symbols**: [SymbolUploader] sends them to Crashlytics and Sentry,
+///   [Symbolicator] de-obfuscates crash traces.
+/// * **Editor and project setup**: [suggestConfig], [planLaunchJson] and
+///   [mergeLaunchJson].
+/// * **Terminal UI**: [Console], [SelectModel] and [renderTable].
+///
+/// Runnable examples for each area are in the package's `example/` folder.
+library;
+
 export 'src/app.dart';
 export 'src/build_paths.dart';
 export 'src/config.dart';
