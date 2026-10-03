@@ -7,6 +7,8 @@
   to `doc/configuration.md`, `doc/project-setup.md` and
   `doc/builds-and-ledger.md`.
 - Documented the library and `ConsoleAbort`, so every public symbol has docs.
+- Fix: the command line now exits with its error code (64 usage, 66 no
+  project, 74 ledger, 78 config); it always exited 0 before.
 - Docs: `output_dir` does not expand `~`; use an absolute or relative path.
 
 ## 0.1.1
