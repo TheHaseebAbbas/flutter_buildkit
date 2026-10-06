@@ -63,7 +63,7 @@ class PreBuildConfig {
     this.clean = false,
     this.buildRunner = true,
     this.genL10n = true,
-    this.buildRunnerArgs = const ['--delete-conflicting-outputs'],
+    this.buildRunnerArgs = const [],
   });
 
   /// Run `flutter clean` and `pub get` first (`pre_build.clean`, default false).
@@ -496,7 +496,7 @@ class AppConfig {
         buildRunner: preY['build_runner'] as bool? ?? true,
         genL10n: preY['gen_l10n'] as bool? ?? true,
         buildRunnerArgs: preY['build_runner_args'] == null
-            ? const ['--delete-conflicting-outputs']
+            ? const []
             : _stringList(preY['build_runner_args']),
       ),
       flavors: {
@@ -715,7 +715,7 @@ pre_build:
   clean: false            # flutter clean + flutter pub get
   build_runner: true      # build_runner build
   gen_l10n: true          # flutter gen-l10n
-  build_runner_args: [--delete-conflicting-outputs]
+  build_runner_args: []
 
 # Optional per-flavor settings. Flavors are also detected from Gradle and
 # Xcode schemes; anything set here overrides what was detected.

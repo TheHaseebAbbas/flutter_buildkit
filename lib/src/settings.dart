@@ -321,7 +321,7 @@ List<SettingDef> globalSettings() => [
         path: const ['pre_build', 'build_runner_args'],
         summary: 'Arguments for build_runner build',
         kind: SettingKind.list,
-        hint: 'Space separated, e.g. --delete-conflicting-outputs',
+        hint: 'Space separated, e.g. --verbose (empty by default)',
         current: (c) => _list(c.preBuild.buildRunnerArgs),
         preview: _preBuildPreview,
       ),
