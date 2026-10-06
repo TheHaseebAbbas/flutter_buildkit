@@ -1,9 +1,13 @@
 name: CI
 
+# Not run on every pull request push. It runs when a PR enters the merge
+# queue (right before it lands on main), on main itself, and on demand from
+# the Actions tab.
 on:
+  merge_group:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
