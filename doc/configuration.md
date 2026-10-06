@@ -39,7 +39,7 @@ line options win for their own settings.
 | `flavors.<name>.extra_args` | `[]` | Extra `flutter build` arguments for this flavor. |
 | `play.service_account_json` | none | Play service account key (path). |
 | `play.default_track` | `internal` | `internal`, `alpha`, `beta` or `production`. |
-| `play.default_release_status` | `completed` | `completed`, `draft` or `inProgress`. |
+| `play.default_release_status` | `draft` | `draft`, `completed` or `inProgress`. A draft is finished in Play Console, so a wrong pick never rolls out to users. |
 | `play.upload_mapping` | `true` | Attach the R8 mapping to the Play upload. |
 | `crashlytics.enabled` | `true` | Offer Crashlytics for symbol upload. |
 | `crashlytics.cli` | `firebase` | Firebase CLI command. |

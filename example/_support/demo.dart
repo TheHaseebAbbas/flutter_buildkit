@@ -84,7 +84,9 @@ class FakeFlutter extends ProcessRunner {
 
   @override
   Future<int> stream(List<String> command,
-      {String? workingDirectory, Map<String, String>? environment}) async {
+      {String? workingDirectory,
+      Map<String, String>? environment,
+      String? logFile}) async {
     commands.add(command);
     if (!command.contains('build')) return 0;
     final flavor = command.contains('--flavor')

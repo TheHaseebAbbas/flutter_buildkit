@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -5,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../build_paths.dart';
 import '../ledger/ledger.dart';
 import '../model/build_record.dart';
+import 'flutter_builder.dart';
 
 /// Ledger operations that also touch the build folders on disk.
 class BuildManager {
@@ -31,8 +33,18 @@ class BuildManager {
   ///   debug symbols, mappings and ledger row stay, so crashes from the field
   ///   can still be traced.
   ///
+  /// The ledger file is hand-editable, so every path is checked before
+  /// anything is removed: after resolving symlinks it must lie strictly
+  /// inside the ledger's folder, must not contain another build, and a build
+  /// folder must hold a `build_info.json` with the same id. A build that
+  /// fails a check is reported in [DeleteResult.failed] and left alone.
+  ///
+  /// With [dryRun] the checks run and the result says what would happen, but
+  /// nothing is changed.
+  ///
   /// Builds whose files could not be deleted keep their row.
-  Future<DeleteResult> delete(Iterable<BuildRecord> records) async {
+  Future<DeleteResult> delete(Iterable<BuildRecord> records,
+      {bool dryRun = false}) async {
     final deleted = <BuildRecord>[];
     final filesOnly = <BuildRecord>[];
     final failed = <BuildRecord, Object>{};
@@ -40,15 +52,22 @@ class BuildManager {
       try {
         if (r.isReleased) {
           if (r.artifactsDeleted) continue;
-          await _deleteArtifacts(r);
-          await ledger.update(r.id,
-              (x) => x.copyWith(artifactsDeletedAt: DateTime.now().toUtc()));
+          final files = await _artifactFiles(r);
+          if (!dryRun) {
+            for (final f in files) {
+              if (await f.exists()) await f.delete();
+            }
+            await ledger.update(r.id,
+                (x) => x.copyWith(artifactsDeletedAt: DateTime.now().toUtc()));
+          }
           filesOnly.add(r);
         } else {
-          final dir = Directory(_safeBuildDir(r));
-          if (await dir.exists()) await dir.delete(recursive: true);
-          await pruneEmptyParents(ledger.rootDir, dir.parent);
-          await ledger.remove([r.id]);
+          final dir = Directory(await _safeBuildDir(r));
+          if (!dryRun) {
+            if (await dir.exists()) await dir.delete(recursive: true);
+            await pruneEmptyParents(ledger.rootDir, dir.parent);
+            await ledger.remove([r.id]);
+          }
           deleted.add(r);
         }
       } on FileSystemException catch (e) {
@@ -57,28 +76,68 @@ class BuildManager {
         failed[r] = e;
       }
     }
-    return DeleteResult(deleted, filesOnly, failed);
+    return DeleteResult(deleted, filesOnly, failed, dryRun: dryRun);
   }
 
-  Future<void> _deleteArtifacts(BuildRecord r) async {
-    _safeBuildDir(r);
+  Future<List<File>> _artifactFiles(BuildRecord r) async {
+    await _safeBuildDir(r);
+    final files = <File>[];
     for (final a in r.artifacts) {
       final path = ledger.resolve(a.path);
-      if (!p.isWithin(ledger.rootDir, path)) {
+      // Compare the real location of the folder holding the file, so a
+      // symlinked folder cannot lead out of the ledger's root.
+      final parent = await _canonical(p.dirname(path));
+      final root = await _canonical(ledger.rootDir);
+      if (!p.isWithin(root, parent)) {
         throw StateError(
-            'Refusing to delete $path: outside ${ledger.rootDir}.');
+            'Refusing to delete $path: it resolves outside $root.');
       }
-      final f = File(path);
-      if (await f.exists()) await f.delete();
+      files.add(File(path));
     }
+    return files;
   }
 
-  /// Build folder for [r], refusing anything outside the ledger's root.
-  String _safeBuildDir(BuildRecord r) {
+  Future<String> _canonical(String path) async {
+    final dir = Directory(path);
+    return await dir.exists()
+        ? dir.resolveSymbolicLinks()
+        : p.normalize(p.absolute(path));
+  }
+
+  /// Build folder for [r]; throws [StateError] unless it is safe to remove.
+  Future<String> _safeBuildDir(BuildRecord r) async {
     final dir = ledger.resolve(r.outputDir);
-    if (!p.isWithin(ledger.rootDir, dir)) {
+    final root = await _canonical(ledger.rootDir);
+    final real = await _canonical(dir);
+    if (!p.isWithin(root, real)) {
       throw StateError(
-          'Refusing to delete $dir: it is outside ${ledger.rootDir}.');
+          'Refusing to delete $dir: it is not inside $root (the ledger\'s '
+          'folder).');
+    }
+    for (final other in ledger.records) {
+      if (other.id == r.id) continue;
+      final otherDir = await _canonical(ledger.resolve(other.outputDir));
+      if (p.isWithin(real, otherDir) || p.equals(real, otherDir)) {
+        throw StateError('Refusing to delete $dir: it also holds build '
+            '${other.id}.');
+      }
+    }
+    if (await Directory(dir).exists()) {
+      final info = File(p.join(dir, buildInfoName));
+      if (!await info.exists()) {
+        throw StateError('Refusing to delete $dir: it has no $buildInfoName, '
+            'so it does not look like a build folder.');
+      }
+      Object? id;
+      try {
+        id = (jsonDecode(await info.readAsString()) as Map)['id'];
+      } on Object {
+        id = null;
+      }
+      if (id != r.id) {
+        throw StateError('Refusing to delete $dir: $buildInfoName does not '
+            'belong to build ${r.id}.');
+      }
     }
     return dir;
   }
@@ -87,7 +146,11 @@ class BuildManager {
 /// What [BuildManager.delete] did, per build.
 class DeleteResult {
   /// Creates a result from the three outcome groups.
-  DeleteResult(this.deleted, this.filesOnly, this.failed);
+  DeleteResult(this.deleted, this.filesOnly, this.failed,
+      {this.dryRun = false});
+
+  /// True when nothing was changed; the lists say what would have happened.
+  final bool dryRun;
 
   /// Folder and ledger row removed.
   final List<BuildRecord> deleted;

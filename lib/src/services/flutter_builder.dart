@@ -110,6 +110,12 @@ List<String> flutterBuildArgs(BuildRequest r, {String? symbolsDir}) => [
       ...r.extraArgs,
     ];
 
+/// Name of the file in each build folder that holds the `flutter build` output.
+const buildLogName = 'build.log';
+
+/// Name of the file in each build folder that holds the ledger row.
+const buildInfoName = 'build_info.json';
+
 /// Runs `flutter build`, copies the outputs into the build folder tree and
 /// records the build in the ledger.
 class FlutterBuilder {
@@ -155,8 +161,34 @@ class FlutterBuilder {
           type: type,
           entry: request.entryPoint,
         );
+    // Pick the id first, so a collision cannot surface after the build.
+    final id = _freshId(started);
     final outDir = paths.uniqueBuildDir(naming(request.type));
     await Directory(outDir).create(recursive: true);
+    InterruptGuard.protect(outDir);
+    try {
+      return await _run(request, started, id, outDir, paths, naming);
+    } finally {
+      InterruptGuard.release(outDir);
+    }
+  }
+
+  String _freshId(DateTime started) {
+    var id = newBuildId(started);
+    while (ledger.byId(id) != null) {
+      id = newBuildId(started);
+    }
+    return id;
+  }
+
+  Future<BuildRecord> _run(
+    BuildRequest request,
+    DateTime started,
+    String id,
+    String outDir,
+    BuildPaths paths,
+    BuildNaming Function(ArtifactType) naming,
+  ) async {
     final symbolsDir = request.willObfuscate
         ? p.join(outDir, BuildPaths.symbolsFolder, 'dart')
         : null;
@@ -165,29 +197,40 @@ class FlutterBuilder {
       ...config.flutter,
       ...flutterBuildArgs(request, symbolsDir: symbolsDir),
     ];
-    log('\$ ${describeCommand(command)}\n');
+    final commandLine = describeCommand(command);
+    log('\$ $commandLine\n');
+    final logFile = p.join(outDir, buildLogName);
+    await File(logFile).writeAsString('\$ $commandLine\n');
     final flutterVersion = await _flutterVersion();
     final int exitCode;
     try {
-      exitCode = await runner.stream(command, workingDirectory: project.dir);
+      exitCode = await runner.stream(command,
+          workingDirectory: project.dir, logFile: logFile);
     } on ProcessException catch (e) {
       await _discard(outDir);
       throw BuildException('Could not start "${config.flutter.join(' ')}": '
           '${e.message}. Is Flutter on your PATH? Set "flutter:" in the config '
           'or FBK_FLUTTER otherwise.');
     }
+    Future<Never> fail(BuildFailure failure) async {
+      await _recordFailure(
+          request, id, started, outDir, commandLine, failure, flutterVersion);
+      throw BuildException('${failure.message} The log is in '
+          '${p.join(outDir, buildLogName)}.');
+    }
+
     if (exitCode != 0) {
-      await _discard(outDir);
-      throw BuildException('flutter build failed with exit code $exitCode. '
-          'Nothing was added to the ledger.');
+      await fail(BuildFailure(
+          exitCode, 'flutter build failed with exit code $exitCode.'));
     }
 
     final outputs = _findOutputs(request, since: started);
     if (outputs.isEmpty) {
-      await _discard(outDir);
-      throw BuildException('flutter build succeeded but no '
-          '.${request.type.extension} newer than the build start was found '
-          'under ${p.join(project.dir, 'build')}.');
+      await fail(BuildFailure(
+          0,
+          'flutter build succeeded but no .${request.type.extension} newer '
+          'than the build start was found under '
+          '${p.join(project.dir, 'build')}.'));
     }
 
     final artifacts = <BuildArtifact>[];
@@ -219,8 +262,8 @@ class FlutterBuilder {
 
     final (commit, branch) = await project.gitInfo();
     final record = BuildRecord(
-      id: newBuildId(started),
-      appName: appName,
+      id: id,
+      appName: project.appName,
       packageName: request.packageName,
       flavor: request.flavor,
       mode: request.mode,
@@ -244,11 +287,53 @@ class FlutterBuilder {
       durationMs: DateTime.now().difference(started).inMilliseconds,
       preBuild: request.preBuild,
       notes: request.notes,
+      command: commandLine,
     );
-    await File(p.join(outDir, 'build_info.json')).writeAsString(
+    await File(p.join(outDir, buildInfoName)).writeAsString(
         const JsonEncoder.withIndent('  ').convert(record.toJson()));
     await ledger.add(record);
     return record;
+  }
+
+  /// Keeps the folder (with `build.log`) and adds a `failed` row, so a
+  /// failed build is not silently forgotten.
+  Future<void> _recordFailure(
+    BuildRequest request,
+    String id,
+    DateTime started,
+    String outDir,
+    String commandLine,
+    BuildFailure failure,
+    String? flutterVersion,
+  ) async {
+    final (commit, branch) = await project.gitInfo();
+    final record = BuildRecord(
+      id: id,
+      appName: project.appName,
+      packageName: request.packageName,
+      flavor: request.flavor,
+      mode: request.mode,
+      type: request.type,
+      versionName: request.versionName,
+      versionCode: request.versionCode,
+      createdAt: started.toUtc(),
+      target: request.target,
+      entryPoint: request.entryPoint,
+      outputDir: ledger.relativize(outDir),
+      artifacts: const [],
+      obfuscated: request.willObfuscate,
+      gitCommit: commit,
+      gitBranch: branch,
+      flutterVersion: flutterVersion,
+      durationMs: DateTime.now().difference(started).inMilliseconds,
+      preBuild: request.preBuild,
+      notes: request.notes,
+      failure: failure,
+      command: commandLine,
+    );
+    await File(p.join(outDir, buildInfoName)).writeAsString(
+        const JsonEncoder.withIndent('  ').convert(record.toJson()));
+    await ledger.add(record);
   }
 
   List<File> _findOutputs(BuildRequest r, {required DateTime since}) {

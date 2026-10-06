@@ -1,3 +1,36 @@
+## 0.2.0
+
+Safety release. Behavior changes are marked **Changed**.
+
+- Delete is hardened. A build folder must lie strictly inside the ledger's
+  folder after resolving symlinks, must not contain another build, and must
+  hold a `build_info.json` with the build's id; released builds' artifact
+  paths are checked the same way. `BuildManager.delete` gained `dryRun`.
+- Failed builds are recorded. The folder is kept with a new `build.log`
+  (the output of `flutter build`), and the ledger gets a row with status
+  `failed`, the exit code and the command line. Failed rows cannot be
+  published, uploaded or have symbols sent. `BuildRecord` gained `failure`,
+  `command` and `isFailed`; `BuildStatus` gained `failed`.
+- Every build now stores the command line it ran (`command`).
+- Ctrl-C during a build stops `flutter` and removes the unfinished folder
+  (`InterruptGuard`).
+- The build id is chosen before the build, so a duplicate id can no longer
+  reject a finished build.
+- **Changed:** `play.default_release_status` now defaults to `draft` (it was
+  `completed`). The menu pre-selects draft, shows a summary before uploading,
+  and the production track needs `production` typed to confirm. Set
+  `default_release_status: completed` to keep the old behavior.
+- **Changed:** `ProcessRunner.stream` has a new optional `logFile`; subclasses
+  that override it must accept it. With a log file the output is copied to the
+  console and the file, so `flutter` no longer sees a terminal for that run.
+- CSV and TSV exports neutralize cells that start with `=`, `+`, `-`, `@`, a
+  tab or a carriage return. They also gain the columns `target`, `command`,
+  `failure_exit_code` and `play_edit_id` at the end.
+- **Changed:** `config` shows `set (N chars)` for secrets instead of the
+  first four characters.
+- The menu warns when a delete removes the symbols of a build that was once
+  published and then unmarked.
+
 ## 0.1.2
 
 - Added an `example/` folder with runnable examples by topic (library API,

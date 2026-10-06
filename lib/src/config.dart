@@ -84,7 +84,7 @@ class PlayConfig {
   const PlayConfig({
     this.serviceAccountJson,
     this.defaultTrack = 'internal',
-    this.defaultReleaseStatus = 'completed',
+    this.defaultReleaseStatus = 'draft',
     this.uploadMapping = true,
   });
 
@@ -94,8 +94,9 @@ class PlayConfig {
   /// Track to upload to by default (`play.default_track`), e.g. `internal`.
   final String defaultTrack;
 
-  /// Release status for uploads (`play.default_release_status`), e.g.
-  /// `completed`.
+  /// Release status for uploads (`play.default_release_status`), `draft`
+  /// unless set. A draft is finished in Play Console, so a wrong pick never
+  /// rolls out to users.
   final String defaultReleaseStatus;
 
   /// Also upload R8 mapping.txt as the deobfuscation file.
@@ -350,7 +351,7 @@ class AppConfig {
             playY['service_account_json'] as String?),
         defaultTrack: playY['default_track'] as String? ?? 'internal',
         defaultReleaseStatus:
-            playY['default_release_status'] as String? ?? 'completed',
+            playY['default_release_status'] as String? ?? 'draft',
         uploadMapping: playY['upload_mapping'] as bool? ?? true,
       ),
       crashlytics: CrashlyticsConfig(
@@ -427,7 +428,7 @@ class AppConfig {
   /// The effective settings, one `key: value` per line, secrets masked.
   String describe() {
     String mask(String? v) =>
-        v == null ? '(not set)' : '${v.substring(0, v.length < 4 ? 0 : 4)}****';
+        v == null ? '(not set)' : 'set (${v.length} chars)';
     String list(List<String> v) => v.isEmpty ? '[]' : v.join(' ');
     final lines = <String, String>{
       'config file': configFile ?? '(none; defaults)',
@@ -555,7 +556,7 @@ play:
   # Env: PLAY_SERVICE_ACCOUNT_JSON (path to the key file)
   # service_account_json: ~/.secrets/play-service-account.json
   default_track: internal          # internal, alpha, beta, production
-  default_release_status: completed  # draft, completed, inProgress
+  default_release_status: draft    # draft, completed, inProgress
   upload_mapping: true
 
 crashlytics:

@@ -94,6 +94,9 @@ abstract final class SymbolTargets {
 
 /// Where a build is in its life, most advanced state wins.
 enum BuildStatus {
+  /// The build did not finish; only its log is kept.
+  failed('failed'),
+
   /// Built and stored; not released anywhere.
   built('built'),
 
@@ -109,6 +112,26 @@ enum BuildStatus {
   final String code;
 }
 
+/// Why a build did not finish; set on rows with status [BuildStatus.failed].
+class BuildFailure {
+  /// Creates a failure with the process [exitCode] and a [message].
+  const BuildFailure(this.exitCode, this.message);
+
+  /// Exit code of `flutter build`; 0 when it succeeded but produced no file.
+  final int exitCode;
+
+  /// What went wrong, phrased for the user.
+  final String message;
+
+  /// JSON form stored in the ledger.
+  Map<String, Object?> toJson() => {'exitCode': exitCode, 'message': message};
+
+  /// Reads the JSON form written by [toJson].
+  factory BuildFailure.fromJson(Map<String, Object?> json) => BuildFailure(
+      (json['exitCode'] as num?)?.toInt() ?? 1,
+      json['message'] as String? ?? '');
+}
+
 /// Something that happened to a build, kept in [BuildRecord.events].
 class BuildEvent {
   /// Creates an event at [at] of the given [kind] with an optional [note].
@@ -117,7 +140,7 @@ class BuildEvent {
   /// When the event happened.
   final DateTime at;
 
-  /// `built`, `uploaded`, `published`, `unpublished`, `symbols_uploaded` or
+  /// `built`, `build_failed`, `uploaded`, `published`, `unpublished`, `symbols_uploaded` or
   /// `artifacts_deleted`.
   final String kind;
 
@@ -129,6 +152,7 @@ class BuildEvent {
     final n = note == null ? '' : ' ($note)';
     return switch (kind) {
       'built' => 'built',
+      'build_failed' => 'build failed$n',
       'uploaded' => 'uploaded to Google Play$n',
       'published' => 'marked published',
       'unpublished' => 'unmarked as published',
@@ -184,6 +208,8 @@ class BuildRecord {
     this.artifactsDeletedAt,
     this.history = const [],
     this.notes,
+    this.failure,
+    this.command,
   });
 
   /// Unique id of the build.
@@ -268,11 +294,21 @@ class BuildRecord {
   /// Free form note; null if none.
   final String? notes;
 
+  /// Set when the build did not finish; such a row has no [artifacts] and
+  /// keeps only its `build.log`.
+  final BuildFailure? failure;
+
+  /// The `flutter build` command line that was run, when known.
+  final String? command;
+
   /// [flavor], or `default` when there is none.
   String get flavorLabel => flavor ?? 'default';
 
   /// Version as `name+code`, for example `1.2.0+14`.
   String get version => '$versionName+$versionCode';
+
+  /// Whether the build did not finish; see [failure].
+  bool get isFailed => failure != null;
 
   /// Whether the build was marked published.
   bool get isPublished => publishedAt != null;
@@ -289,9 +325,11 @@ class BuildRecord {
   bool get artifactsDeleted => artifactsDeletedAt != null;
 
   /// The most advanced state: published, else uploaded to Play, else built.
-  BuildStatus get status => isPublished
-      ? BuildStatus.published
-      : (isOnPlay ? BuildStatus.uploaded : BuildStatus.built);
+  BuildStatus get status => isFailed
+      ? BuildStatus.failed
+      : isPublished
+          ? BuildStatus.published
+          : (isOnPlay ? BuildStatus.uploaded : BuildStatus.built);
 
   /// [status] in words, e.g. `published (Play internal, completed)`.
   String get statusLabel {
@@ -299,6 +337,7 @@ class BuildRecord {
         ? ''
         : 'Play ${play!.track}${play!.releaseStatus == null ? '' : ', ${play!.releaseStatus}'}';
     return switch (status) {
+      BuildStatus.failed => 'failed (exit code ${failure!.exitCode})',
       BuildStatus.published =>
         onPlay.isEmpty ? 'published' : 'published ($onPlay)',
       BuildStatus.uploaded => 'uploaded to $onPlay',
@@ -307,12 +346,16 @@ class BuildRecord {
   }
 
   /// Whether the build's files are still there.
-  String get condition =>
-      artifactsDeleted ? 'artifacts deleted, symbols kept' : 'ready';
+  String get condition => isFailed
+      ? 'failed, log kept'
+      : artifactsDeleted
+          ? 'artifacts deleted, symbols kept'
+          : 'ready';
 
   /// State of the debug symbols and mappings: stored on disk and uploaded
   /// to which crash tools.
   String get symbolsStatus {
+    if (isFailed) return 'none (build failed)';
     final stored = symbolsDir != null || mappingFile != null;
     if (!stored) {
       return obfuscated ? 'missing' : 'none (not obfuscated)';
@@ -322,10 +365,12 @@ class BuildRecord {
   }
 
   /// Short [condition] for tables: `ready` or `files deleted`.
-  String get conditionShort => artifactsDeleted ? 'files deleted' : 'ready';
+  String get conditionShort =>
+      isFailed ? 'failed' : (artifactsDeleted ? 'files deleted' : 'ready');
 
   /// Short [symbolsStatus] for tables: `-`, `stored` or the tools sent to.
   String get symbolsShort {
+    if (isFailed) return '-';
     if (symbolsDir == null && mappingFile == null) {
       return obfuscated ? 'missing' : '-';
     }
@@ -338,7 +383,8 @@ class BuildRecord {
   List<BuildEvent> get events {
     if (history.isNotEmpty) return history;
     return ([
-      BuildEvent(createdAt, 'built'),
+      BuildEvent(
+          createdAt, isFailed ? 'build_failed' : 'built', failure?.message),
       if (play != null)
         BuildEvent(play!.uploadedAt, 'uploaded', play!.eventNote),
       if (publishedAt != null) BuildEvent(publishedAt!, 'published'),
@@ -411,6 +457,8 @@ class BuildRecord {
       artifactsDeletedAt: artifactsDeletedAt ?? this.artifactsDeletedAt,
       history: added.isEmpty ? history : [...events, ...added],
       notes: notes ?? this.notes,
+      failure: failure,
+      command: command,
     );
   }
 
@@ -453,6 +501,8 @@ class BuildRecord {
         if (artifactsDeletedAt != null)
           'artifactsDeletedAt': artifactsDeletedAt!.toUtc().toIso8601String(),
         if (notes != null) 'notes': notes,
+        if (failure != null) 'failure': failure!.toJson(),
+        if (command != null) 'command': command,
       };
 
   /// Reads a record from its ledger JSON; older rows without optional fields are accepted.
@@ -504,6 +554,11 @@ class BuildRecord {
           BuildEvent.fromJson((h as Map).cast<String, Object?>()),
       ],
       notes: json['notes'] as String?,
+      failure: json['failure'] == null
+          ? null
+          : BuildFailure.fromJson(
+              (json['failure']! as Map).cast<String, Object?>()),
+      command: json['command'] as String?,
     );
   }
 }

@@ -69,14 +69,17 @@ keeps up to date:
 
 | Field | Values |
 |---|---|
-| `status` | `built` (stored, not released), `uploaded` (on Google Play, not published), `published` (marked public). The most advanced one wins; clearing the published mark steps back. |
+| `status` | `failed` (the build did not finish; only `build.log` is kept), `built` (stored, not released), `uploaded` (on Google Play, not published), `published` (marked public). The most advanced one wins; clearing the published mark steps back. |
 | `condition` | `ready`, or `artifacts deleted, symbols kept` after the APK/AAB/IPA files were removed. |
 | `symbols_status` | `stored, not uploaded`, `uploaded to crashlytics, sentry`, `missing` (an obfuscated build without symbols) or `none (not obfuscated)`. |
 | history | what happened and when: built, uploaded to Google Play (track, release status), marked published, unmarked, debug symbols uploaded (tool), files deleted. |
 
 The list shows Status, Files and Symbols columns, the build details show the
 full history, and CSV/TSV/JSON exports carry `status`, `condition`,
-`symbols_status` and `last_event_at`. Rows written by earlier versions get
+`symbols_status` and `last_event_at`. In CSV and TSV a cell that starts with
+`=`, `+`, `-`, `@`, a tab or a carriage return gets a leading `'`, so a
+spreadsheet shows it as text instead of running it as a formula; JSON is
+unchanged. Rows written by earlier versions get
 their history rebuilt from their dates.
 
 ## Why the ledger is JSON
@@ -90,6 +93,15 @@ atomically and the previous copy is kept as `ledger.json.bak`. Paths inside it
 are relative to the ledger folder, so the whole `app_builds/` folder can be moved.
 
 
+## Build log and failed builds
+
+Every build writes the output of `flutter build` to `build.log` in its folder.
+When a build fails, the folder is kept with that log and the ledger gets a row
+with status `failed`, the exit code and the exact command line, so a failure
+is never silently forgotten. Delete the row like any other build when you no
+longer need it. Pressing Ctrl-C during a build stops `flutter` and removes the
+unfinished folder.
+
 ## Delete rules
 
 * A build that was **never published and never uploaded to Play** is removed
@@ -98,6 +110,13 @@ are relative to the ledger folder, so the whole `app_builds/` folder can be move
   APK/AAB/IPA files. Its debug symbols, mappings and ledger row are kept
   forever, so crashes from the field can still be traced. The row shows
   `files deleted`.
+
+The ledger is a file you can edit by hand, so before removing anything the
+tool checks every path. The build folder must lie **strictly inside** the
+ledger's folder after symlinks are resolved, must not hold another build, and
+must contain a `build_info.json` with the build's id. A build that fails a
+check is reported and left alone. From code, `BuildManager.delete(..., dryRun: true)` runs the checks and
+reports what would be removed without changing anything.
 
 ## Tracing crashes
 

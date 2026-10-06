@@ -449,6 +449,7 @@ class App {
         BuildStatus.published => console.style.green(r.statusLabel),
         BuildStatus.uploaded => console.style.blue(r.statusLabel),
         BuildStatus.built => r.statusLabel,
+        BuildStatus.failed => console.style.red(r.statusLabel),
       };
 
   static String _when(BuildRecord r) => r.createdAt
@@ -509,6 +510,7 @@ class App {
           return switch (cell) {
             'published' => st.green(cell),
             'uploaded' => st.blue(cell),
+            'failed' => st.red(cell),
             _ => st.dim(cell),
           };
         case 9:
@@ -641,7 +643,7 @@ class App {
     final marking = action == 0;
     final picks = await _pickMany(
       marking ? 'Mark which builds as published?' : 'Clear which builds?',
-      where: (r) => marking ? !r.isPublished : r.isPublished,
+      where: (r) => !r.isFailed && (marking ? !r.isPublished : r.isPublished),
     );
     if (picks == null) return;
     for (final r in picks) {
@@ -657,7 +659,7 @@ class App {
 
   Future<void> _play() async {
     final r = await _pickOne('Upload which build to Google Play?',
-        where: (r) => r.type == ArtifactType.aab);
+        where: (r) => r.type == ArtifactType.aab && !r.isFailed);
     if (r == null) return;
     final tracks = ['internal', 'alpha', 'beta', 'production'];
     final defaultIndex = tracks.indexOf(config.play.defaultTrack);
@@ -686,17 +688,34 @@ class App {
         final status = await console.choose(
             'Release status',
             [
-              'completed (rolls out now)',
               'draft (finish in Play Console)',
+              'completed (rolls out now)',
             ],
-            defaultIndex: config.play.defaultReleaseStatus == 'draft' ? 1 : 0,
+            defaultIndex:
+                config.play.defaultReleaseStatus == 'completed' ? 1 : 0,
             backLabel: 'Cancel');
         if (status == null) return;
+        final releaseStatus = status == 0 ? 'draft' : 'completed';
         final notes = await console.ask('Release notes (en-US, optional)');
+        if (notes == null) return;
+        console
+          ..heading('Upload to Google Play')
+          ..kv('App', r.packageName ?? r.appName)
+          ..kv('Version', r.version)
+          ..kv('Track', track)
+          ..kv('Status', releaseStatus);
+        if (track == 'production') {
+          console.warn('This is the production track.');
+          final typed = await console.ask('Type "production" to continue');
+          if (typed?.trim().toLowerCase() != 'production') {
+            console.out('Cancelled.');
+            return;
+          }
+        } else if (!await console.confirm('Upload?', defaultValue: true)) {
+          return;
+        }
         await publisher.publish(r,
-            track: track,
-            releaseStatus: status == 0 ? 'completed' : 'draft',
-            releaseNotes: notes);
+            track: track, releaseStatus: releaseStatus, releaseNotes: notes);
         console.success(
             'Uploaded to the $track track and recorded in the ledger.');
         return;
@@ -711,7 +730,7 @@ class App {
 
   Future<void> _symbols() async {
     final picks = await _pickMany('Upload symbols for which builds?',
-        where: (r) => r.symbolsDir != null);
+        where: (r) => !r.isFailed && r.symbolsDir != null);
     if (picks == null) return;
     final targets = [
       if (config.crashlytics.enabled) SymbolTargets.crashlytics,
@@ -823,6 +842,13 @@ class App {
         console.warn('${lost.length} obfuscated build(s) have no symbols '
             'uploaded; their only copy of the symbols goes too.');
       }
+    }
+    final unmarked = picks.where(
+        (r) => !r.isReleased && r.events.any((e) => e.kind == 'unpublished'));
+    if (unmarked.isNotEmpty) {
+      console.warn('${unmarked.length} build(s) were published once and the '
+          'mark was cleared, so they are deleted completely, symbols '
+          'included.');
     }
     if (filesOnly.isNotEmpty) {
       console.note('Released builds: only the APK/AAB/IPA files are deleted. '

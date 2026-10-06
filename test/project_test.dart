@@ -115,6 +115,27 @@ android {
       expect(c.flutter, ['flutter']);
     });
 
+    test('a Play upload is a draft unless the config says otherwise', () {
+      expect(AppConfig.fromYaml('/p', const {}).play.defaultReleaseStatus,
+          'draft');
+      final doc = loadYaml(AppConfig.template) as Map;
+      expect(AppConfig.fromYaml('/p', doc.cast()).play.defaultReleaseStatus,
+          'draft');
+      final c = AppConfig.fromYaml('/p', {
+        'play': {'default_release_status': 'completed'}
+      });
+      expect(c.play.defaultReleaseStatus, 'completed');
+    });
+
+    test('describe() does not reveal any part of a secret', () {
+      final c = AppConfig.fromYaml('/p', {
+        'sentry': {'auth_token': 'sntrys_abcdef123456'}
+      });
+      final text = c.describe();
+      expect(text, matches(RegExp(r'sentry\.auth_token\s+set \(19 chars\)')));
+      expect(text, isNot(contains('sntr')));
+    });
+
     test('the init template is valid config', () {
       final doc = loadYaml(AppConfig.template) as Map;
       expect(() => AppConfig.fromYaml('/p', doc.cast()), returnsNormally);
