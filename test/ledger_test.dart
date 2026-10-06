@@ -354,16 +354,45 @@ void main() {
       expect(kept.isPublished, isTrue);
     });
 
-    test('uploaded to Play counts as released', () async {
+    PlayUpload upload(String track) =>
+        PlayUpload(track: track, uploadedAt: DateTime.utc(2026), viaApi: false);
+
+    test('an upload to a closed or production track keeps symbols and row',
+        () async {
       await makeBuild('a', 'my_app/dev/release/v1');
-      final r = record('a', outputDir: 'my_app/dev/release/v1').copyWith(
-        play: PlayUpload(
-            track: 'internal', uploadedAt: DateTime.utc(2026), viaApi: false),
-      );
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(play: upload('beta'));
       await ledger.add(r);
       final result = await BuildManager(ledger).delete([r]);
       expect(result.filesOnly, hasLength(1));
       expect(ledger.byId('a'), isNotNull);
+    });
+
+    test('an internal-track upload does not keep a build by default', () async {
+      await makeBuild('a', 'my_app/dev/release/v1');
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(play: upload('internal'));
+      await ledger.add(r);
+      final result = await BuildManager(ledger).delete([r]);
+      expect(result.deleted, hasLength(1));
+      expect(ledger.byId('a'), isNull);
+    });
+
+    test('retain_on can bring the old behavior back', () async {
+      await makeBuild('a', 'my_app/dev/release/v1');
+      final r = record('a', outputDir: 'my_app/dev/release/v1')
+          .copyWith(play: upload('internal'));
+      await ledger.add(r);
+      final result = await BuildManager(ledger, retainOn: {'play'}).delete([r]);
+      expect(result.filesOnly, hasLength(1));
+    });
+
+    test('a build published once is still known after the mark is cleared', () {
+      final r = record('a', outputDir: 'x')
+          .copyWith(publishedAt: DateTime.utc(2026))
+          .copyWith(clearPublished: true);
+      expect(r.isPublished, isFalse);
+      expect(r.everPublished, isTrue);
     });
 
     test('deleting a released build twice is a no-op', () async {

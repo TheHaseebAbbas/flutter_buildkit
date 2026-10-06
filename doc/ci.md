@@ -10,12 +10,18 @@ text (or JSON with `--json`) and returns a stable exit code. Global options
 | `publish <id\|latest> --track internal` | Uploads the AAB through the Play API. `--release-status` (default from the config, `draft`), `--fraction`, `--notes`, `--notes-file`. The track is read first; a staged or halted rollout on it is not dropped unless you pass `--replace-existing`. `--mark-only` just records the upload. The `production` track needs `--yes`. |
 | `mark <id...> [--clear]` | Marks builds as published in the ledger (or clears the mark). |
 | `symbols <id\|latest> --to crashlytics,sentry` | Uploads debug symbols. Defaults to the tools enabled in the config. |
-| `trace <id\|latest> --file crash.txt` | De-obfuscates a stack trace (stdin when no file). `--kind`, `--save`. |
-| `delete <id...> --dry-run` / `--yes` | Deletes builds by the normal rules. Needs one of the two flags. |
-| `list`, `export <fmt> [file]` | `--flavor`, `--status`, `--since 7d`, `--limit`, `--json` (list). |
+| `trace <id\|latest\|auto> --file crash.txt` | De-obfuscates a stack trace (stdin when no file). `auto` picks the build from the report's `build_id`. `--kind`, `--save`. |
+| `delete <id...> --dry-run` / `--yes` | Deletes builds by the normal rules. Needs one of the two flags; a build that was published once and unmarked also needs `--force`. |
+| `doctor [--online]` | Checks Flutter, git, JDK, Android SDK, `apksigner`, the CLIs, the Play key (`--online` tries it against Google Play), the output folder, disk space and the ledger. |
+| `verify [--quick]` | Compares the ledger with the disk (files, hashes, symbols, orphan folders). |
+| `prune --dry-run` / `--yes` | Applies the `retention` settings; `--log-days`, `--symbols-keep`. |
+| `list`, `export <fmt> [file]` | `--flavor`, `--status`, `--since 7d`, `--limit`, `--json` (list), `--bom` (csv, for Excel). |
+
+A config that names executables (`flutter: fvm flutter`, ...) in the shared file
+must be trusted once: run with `--trust-config` or set `FBK_TRUST_CONFIG=1` in CI.
 
 An id can be shortened to any unique prefix; `latest` is the newest build that
-did not fail. `list`, `export`, `mark` and `delete` work with just
+did not fail. `list`, `export`, `mark`, `delete`, `verify` and `prune` work with just
 `--ledger <file>` outside a Flutter project.
 
 ## Exit codes
@@ -28,10 +34,12 @@ did not fail. `list`, `export`, `mark` and `delete` work with just
 | 69 | An upload to Play, Crashlytics or Sentry failed |
 | 70 | At least one build failed (the failed rows and `build.log` are kept) |
 | 71 | A trace could not be de-obfuscated |
-| 72 | A delete was refused or failed |
+| 72 | A delete or prune was refused or failed |
 | 73 | `init`: the config file already exists (was 1 before 0.2.0) |
 | 74 | Ledger unreadable or invalid |
-| 78 | Config invalid |
+| 75 | `doctor` found a failing check |
+| 76 | `verify` found differences between the ledger and the disk |
+| 78 | Config invalid, or the config names executables you have not trusted (see `--trust-config`) |
 | 130 | Interrupted with Ctrl-C |
 
 With `--json`, stdout holds only the JSON document; build output and progress

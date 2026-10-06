@@ -26,11 +26,15 @@ Commands for scripts and CI (no prompts; see "Exit codes"):
   publish  Upload an AAB to Google Play: publish <id|latest> --track internal [--release-status draft]
   mark     Mark builds as published: mark <id...> [--clear]
   symbols  Upload debug symbols: symbols <id|latest> --to crashlytics,sentry
-  trace    De-obfuscate a crash: trace <id|latest> [--file crash.txt]
-  delete   Delete builds: delete <id...> --dry-run | --yes
+  trace    De-obfuscate a crash: trace <id|latest|auto> [--file crash.txt]  (auto: match by build_id)
+  delete   Delete builds: delete <id...> --dry-run | --yes [--force]
+  doctor   Check Flutter, JDK, Android SDK, CLIs, Play key (--online), disk.
+  verify   Compare the ledger with the disk: files, hashes, symbols, orphans.
+  prune    Apply retention: old logs, failed builds, uploaded symbols: --dry-run | --yes
 
 Exit codes: 0 ok, 64 usage, 66 no project, 69 upload failed, 70 build failed,
-71 trace failed, 72 delete failed, 73 file exists, 74 ledger, 78 config,
+71 trace failed, 72 delete/prune failed, 73 file exists, 74 ledger,
+75 doctor found a failure, 76 verify found differences, 78 config,
 130 interrupted.
 
 Options:
@@ -58,6 +62,10 @@ Future<int> _main(List<String> arguments) async {
       'keys': 'always arrow keys',
       'plain': 'always numbered questions: type 2, or 1,3 for several',
     })
+    ..addFlag('trust-config',
+        negatable: false,
+        help: 'Run the executables the config names without asking '
+            '(also FBK_TRUST_CONFIG=1). Needed in CI for a config that sets them.')
     ..addFlag('help', abbr: 'h', negatable: false);
   addCommandOptions(parser);
 
@@ -119,7 +127,7 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
 
   if (!project.isFlutterProject) {
     // list, export, mark and delete only need the ledger.
-    const ledgerOnly = {'list', 'export', 'mark', 'delete'};
+    const ledgerOnly = {'list', 'export', 'mark', 'delete', 'verify', 'prune'};
     if (ledgerOnly.contains(command) && args['ledger'] != null) {
       try {
         final ledger = await Ledger.open(p.absolute(args['ledger'] as String));
@@ -130,7 +138,7 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
       }
     }
     stderr.writeln('No pubspec.yaml in $projectDir. Run this from a Flutter '
-        'project or pass --project (list, export, mark and delete also work '
+        'project or pass --project (list, export, mark, delete, verify and prune also work '
         'with just --ledger).');
     return ExitCodes.noProject;
   }
@@ -138,6 +146,12 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
   try {
     final config =
         AppConfig.load(projectDir, explicitPath: args['config'] as String?);
+    for (final w in config.warnings) {
+      stderr.writeln('Warning: $w');
+    }
+    if (command != 'config' && !await _trusted(config, command, args)) {
+      return ExitCodes.config;
+    }
     final ledgerPath = args['ledger'] != null
         ? p.absolute(args['ledger'] as String)
         : config.ledgerPath;
@@ -193,7 +207,10 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
             'trace' ||
             'delete' ||
             'list' ||
-            'export':
+            'export' ||
+            'doctor' ||
+            'verify' ||
+            'prune':
         return await Cli(
                 ledger: ledger,
                 project: project,
@@ -215,4 +232,34 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
     stderr.writeln('$e');
     return ExitCodes.ledger;
   }
+}
+
+/// True when [config] may run. A config that names executables is shown to
+/// the user once (per project and per set of commands).
+Future<bool> _trusted(
+    AppConfig config, String? command, ArgResults args) async {
+  final trust = ConfigTrust();
+  if (trust.isTrusted(config)) return true;
+  final lines = ConfigTrust.describe(config);
+  final forced = args['trust-config'] as bool ||
+      Platform.environment['FBK_TRUST_CONFIG'] == '1';
+  if (forced) {
+    trust.trust(config);
+    return true;
+  }
+  stderr.writeln('${config.configFile} sets executables this tool will run:');
+  for (final l in lines) {
+    stderr.writeln('  $l');
+  }
+  const interactive = {null, 'settings', 'autoconfig', 'vscode'};
+  if (!interactive.contains(command) || !stdin.hasTerminal) {
+    stderr.writeln('Review them, then run once with --trust-config '
+        '(or set FBK_TRUST_CONFIG=1).');
+    return false;
+  }
+  final ui =
+      UiMode.parse(args['ui'] as String? ?? Platform.environment['FBK_UI']);
+  final ok = await Console(mode: ui).confirm('Trust this config?');
+  if (ok) trust.trust(config);
+  return ok;
 }

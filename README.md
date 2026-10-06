@@ -68,6 +68,7 @@ Other commands:
 | `config` | Show the settings in effect (secrets masked). |
 | `list` | Print the ledger as a table (`--flavor`, `--status`, `--since`, `--limit`, `--json`). |
 | `export <csv\|tsv\|json> [file]` | Write the ledger in another format. |
+| `doctor`, `verify`, `prune` | Check the setup, compare the ledger with the disk, apply retention. |
 | `build`, `publish`, `mark`, `symbols`, `trace`, `delete` | The menu's actions without prompts, with exit codes and `--json`, for CI. See [Using it in CI](doc/ci.md). |
 
 Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`,

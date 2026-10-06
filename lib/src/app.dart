@@ -10,7 +10,9 @@ import 'ledger/ledger.dart';
 import 'model/build_options.dart';
 import 'model/build_record.dart';
 import 'services/build_manager.dart';
+import 'services/doctor.dart';
 import 'services/flutter_builder.dart';
+import 'services/maintenance.dart';
 import 'services/play_publisher.dart';
 import 'services/pre_build.dart';
 import 'services/process_runner.dart';
@@ -49,7 +51,7 @@ class App {
   /// Ledger path given on the command line; it wins over the config.
   final String? ledgerOverride;
 
-  BuildManager get _manager => BuildManager(ledger);
+  BuildManager get _manager => BuildManager(ledger, retainOn: config.retainOn);
 
   /// Opens the settings editor on its own (the `settings` command).
   Future<void> editSettings() async {
@@ -116,6 +118,8 @@ class App {
           'Settings',
           'Set up from this project',
           'VS Code launch.json',
+          'Check setup (doctor)',
+          'Check ledger against disk',
         ],
         hints: [
           'APK / AAB / IPA, many flavors at once',
@@ -130,6 +134,8 @@ class App {
           'edit flutter_buildkit.yaml with previews',
           'detect flavors, entry points, tools; write the config',
           'run configs per flavor, entry point and mode',
+          'Flutter, JDK, Android SDK, CLIs, Play key, disk',
+          'missing or changed files, orphan folders',
         ],
         backLabel: 'Quit',
       );
@@ -160,6 +166,10 @@ class App {
             await setUpFromProject();
           case 11:
             await createLaunchJson();
+          case 12:
+            await _doctor();
+          case 13:
+            await _verify();
         }
       } on Object catch (e) {
         if (e is! BuildException &&
@@ -778,16 +788,54 @@ class App {
     }
   }
 
+  // ---- doctor and verify -------------------------------------------------
+
+  Future<void> _doctor() async {
+    console.heading('Check setup');
+    final online = config.play.hasCredentials &&
+        await console.confirm('Also try the Play key against Google Play?');
+    final checks =
+        await Doctor(project: project, config: config, ledger: ledger)
+            .run(online: online);
+    for (final c in checks) {
+      final line = '${c.name}: ${c.detail}';
+      switch (c.level) {
+        case CheckLevel.ok:
+          console.out('  ok    $line');
+        case CheckLevel.warn:
+          console.warn(line);
+          if (c.hint != null) console.out('        ${c.hint}');
+        case CheckLevel.fail:
+          console.error(line);
+          if (c.hint != null) console.out('        ${c.hint}');
+      }
+    }
+  }
+
+  Future<void> _verify() async {
+    console.heading('Check ledger against disk');
+    final report = await verifyLedger(ledger);
+    if (report.ok) {
+      console
+          .success('${report.checked} build(s) checked; all match the disk.');
+      return;
+    }
+    for (final i in report.issues) {
+      console.warn(i.message);
+    }
+    console.note('${report.issues.length} problem(s). "prune" and "delete" '
+        'never touch folders they cannot verify.');
+  }
+
   // ---- trace -------------------------------------------------------------
 
   Future<void> _trace() async {
     final symbolicator = Symbolicator(config: config, ledger: ledger);
-    final r = await _pickOne(
+    var r = await _pickOne(
       'Trace a crash from which build?',
       where: (r) => symbolicator.availableKinds(r).isNotEmpty,
     );
     if (r == null) return;
-    final kinds = symbolicator.availableKinds(r);
 
     final path = await console
         .ask('Path to a stack trace file (leave empty to paste it)');
@@ -805,6 +853,20 @@ class App {
       text = f.readAsStringSync();
     }
     if (text.trim().isEmpty) return;
+
+    final match = matchBuild(ledger.records, text);
+    if (match != null &&
+        match.id != r.id &&
+        symbolicator.availableKinds(match).isNotEmpty) {
+      if (await console.confirm(
+          'This trace belongs to build ${match.id} (${match.version}), not '
+          '${r.id}. Use ${match.id}?',
+          defaultValue: true)) {
+        r = match;
+      }
+    }
+    if (buildMismatchWarning(r, text) case final w?) console.warn(w);
+    final kinds = symbolicator.availableKinds(r);
 
     var kind = detectTraceKind(text);
     if (!kinds.contains(kind) || kinds.length > 1) {
@@ -842,12 +904,13 @@ class App {
       'Delete which builds?',
       // Released builds whose files are already gone have nothing left to
       // delete.
-      disabled: (r) => r.isReleased && r.artifactsDeleted,
+      disabled: (r) => r.isRetainedBy(config.retainOn) && r.artifactsDeleted,
     );
     if (picks == null) return;
 
-    final full = picks.where((r) => !r.isReleased).toList();
-    final filesOnly = picks.where((r) => r.isReleased).toList();
+    final full = picks.where((r) => !r.isRetainedBy(config.retainOn)).toList();
+    final filesOnly =
+        picks.where((r) => r.isRetainedBy(config.retainOn)).toList();
     if (full.isNotEmpty) {
       console.warn('Deleted completely (folder, symbols and ledger row):');
       for (final r in full) {
@@ -859,8 +922,9 @@ class App {
             'uploaded; their only copy of the symbols goes too.');
       }
     }
-    final unmarked = picks.where(
-        (r) => !r.isReleased && r.events.any((e) => e.kind == 'unpublished'));
+    final unmarked = picks
+        .where((r) => !r.isRetainedBy(config.retainOn) && r.everPublished)
+        .toList();
     if (unmarked.isNotEmpty) {
       console.warn('${unmarked.length} build(s) were published once and the '
           'mark was cleared, so they are deleted completely, symbols '
@@ -871,6 +935,18 @@ class App {
           'Symbols, mappings and the ledger row stay:');
       for (final r in filesOnly) {
         console.out('  ${r.artifacts.map((a) => a.path).join(', ')}');
+      }
+    }
+    if (unmarked.isNotEmpty) {
+      // Deleting a build that went out once is the one step that cannot be
+      // taken back, so make the user type what they are removing.
+      final first = unmarked.first;
+      final typed = await console
+          .ask('Type the id of ${first.id} to delete the ${unmarked.length} '
+              'build(s) that were published once');
+      if (typed?.trim() != first.id) {
+        console.note('Not deleted.');
+        return;
       }
     }
     if (!await console.confirm('Delete ${picks.length} build(s)?')) return;
@@ -905,7 +981,8 @@ class App {
     if (path == null) return;
     final file = File(path);
     await file.parent.create(recursive: true);
-    await file.writeAsString(const LedgerExporter().export(records, format));
+    await file.writeAsString(
+        const LedgerExporter().export(records, format, bom: true));
     console.success('Wrote ${records.length} builds to ${file.absolute.path}');
   }
 }
