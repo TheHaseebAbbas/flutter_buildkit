@@ -1,10 +1,11 @@
 name: CI
 
-# Not run on every pull request push. It runs when a PR enters the merge
-# queue (right before it lands on main), on main itself, and on demand from
-# the Actions tab.
+# Not run on every pull request push. Open PRs as drafts; CI runs once when a
+# PR is marked ready for review (before it merges), on main as a safety net,
+# and on demand from the Actions tab.
 on:
-  merge_group:
+  pull_request:
+    types: [ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
