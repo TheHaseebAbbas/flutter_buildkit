@@ -97,11 +97,27 @@ class BuildManager {
     return files;
   }
 
+  /// [path] with symlinks resolved. For a path that does not exist (yet) the
+  /// nearest existing parent is resolved and the rest appended, so it is
+  /// comparable with other resolved paths (`/var` vs `/private/var` on macOS,
+  /// short and long names on Windows).
   Future<String> _canonical(String path) async {
-    final dir = Directory(path);
-    return await dir.exists()
-        ? dir.resolveSymbolicLinks()
-        : p.normalize(p.absolute(path));
+    var current = p.normalize(p.absolute(path));
+    final rest = <String>[];
+    while (await FileSystemEntity.type(current, followLinks: false) ==
+        FileSystemEntityType.notFound) {
+      final parent = p.dirname(current);
+      if (parent == current) return p.normalize(p.absolute(path));
+      rest.insert(0, p.basename(current));
+      current = parent;
+    }
+    // A link or file is resolved through its parent folder; a folder itself.
+    final isDir = await FileSystemEntity.isDirectory(current);
+    final resolved = isDir
+        ? await Directory(current).resolveSymbolicLinks()
+        : p.join(await Directory(p.dirname(current)).resolveSymbolicLinks(),
+            p.basename(current));
+    return p.joinAll([resolved, ...rest]);
   }
 
   /// Build folder for [r]; throws [StateError] unless it is safe to remove.
