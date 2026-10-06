@@ -424,7 +424,8 @@ class Console {
 
     void draw() {
       if (drawn > 0) _write('\x1b[${drawn}A');
-      final lines = renderSelect(title, model, maxRows: maxRows, style: style);
+      final lines = renderSelect(title, model,
+          maxRows: maxRows, style: style, width: _columns - 1);
       _write('\x1b[J${lines.join('\n')}\n');
       drawn = lines.length;
     }

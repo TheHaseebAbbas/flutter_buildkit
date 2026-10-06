@@ -303,12 +303,54 @@ class SelectModel {
 }
 
 /// Renders [model] as lines of text. [maxRows] limits how many items show
-/// at once; the list scrolls to keep the cursor in view.
+/// at once; the list scrolls to keep the cursor in view. With a [width], every
+/// line is cut to fit so none wraps onto a second terminal row.
 List<String> renderSelect(
   String title,
   SelectModel m, {
   int maxRows = 12,
   Style style = Style.plain,
+  int? width,
+}) {
+  final lines = _renderSelectLines(title, m, maxRows: maxRows, style: style);
+  return width == null ? lines : [for (final l in lines) fitLine(l, width)];
+}
+
+/// Cuts [line] to at most [width] visible characters, leaving ANSI escape
+/// sequences intact. A line that wraps would take two terminal rows and break
+/// the cursor arithmetic used to redraw a list in place.
+String fitLine(String line, int width) {
+  if (width < 1) return '';
+  final out = StringBuffer();
+  var shown = 0;
+  var cut = false;
+  var i = 0;
+  while (i < line.length) {
+    if (line.codeUnitAt(i) == 0x1b) {
+      final m = RegExp(r'\x1b\[[0-9;?]*[A-Za-z]').matchAsPrefix(line, i);
+      if (m != null) {
+        out.write(m.group(0));
+        i = m.end;
+        continue;
+      }
+    }
+    if (shown >= width) {
+      cut = true;
+      break;
+    }
+    out.writeCharCode(line.codeUnitAt(i));
+    shown++;
+    i++;
+  }
+  if (cut && line.contains('\x1b')) out.write('\x1b[0m');
+  return out.toString();
+}
+
+List<String> _renderSelectLines(
+  String title,
+  SelectModel m, {
+  required int maxRows,
+  required Style style,
 }) {
   final v = m.visible;
   final width = '${v.length}'.length;

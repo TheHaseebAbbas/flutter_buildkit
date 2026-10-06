@@ -264,6 +264,29 @@ void main() {
     expect(lines.length, lessThanOrEqualTo(5 + 4));
   });
 
+  test('renderSelect with a width never produces a line that could wrap', () {
+    final m = SelectModel(
+      [for (var i = 0; i < 6; i++) SelectItem('row $i', hint: 'h' * 100)],
+      multi: true,
+    );
+    final lines = renderSelect('Flavors to build', m, width: 60);
+    final help = renderSelect('Flavors to build', m).last;
+    expect(help.length, greaterThan(60), reason: 'help text is long');
+    expect(lines.length, renderSelect('Flavors to build', m).length);
+    for (final l in lines) {
+      expect(l.replaceAll(RegExp(r'\x1b\[[0-9;?]*[A-Za-z]'), '').length,
+          lessThanOrEqualTo(60));
+    }
+  });
+
+  test('fitLine keeps escapes, cuts visible text, resets colour', () {
+    const red = '\x1b[31m';
+    expect(fitLine('abcdef', 4), 'abcd');
+    expect(fitLine('abc', 10), 'abc');
+    expect(fitLine('${red}abcdef\x1b[0m', 3), '${red}abc\x1b[0m');
+    expect(fitLine('abc', 0), '');
+  });
+
   group('Console plain fallback (no terminal)', () {
     Console feed(List<String?> lines, List<String> out) {
       final it = lines.iterator;
