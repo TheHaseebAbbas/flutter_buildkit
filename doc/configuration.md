@@ -34,7 +34,7 @@ line options win for their own settings.
 | `pre_build.clean` | `false` | Pre-tick `flutter clean` (followed by `pub get`) in the menu. |
 | `pre_build.build_runner` | `true` | Pre-tick `build_runner build` (shown only if the project uses it). |
 | `pre_build.gen_l10n` | `true` | Pre-tick `flutter gen-l10n` (shown only if the project uses it). |
-| `pre_build.build_runner_args` | `[--delete-conflicting-outputs]` | Arguments for build_runner. |
+| `pre_build.build_runner_args` | `[]` | Arguments for build_runner. |
 | `flavors.<name>.target` | `lib/main_<name>.dart` if it exists | Entry point (`-t`). |
 | `flavors.<name>.dart_define_file` | none | File for `--dart-define-from-file`. |
 | `flavors.<name>.package_name` | from Gradle | Android application id (used for Play). |

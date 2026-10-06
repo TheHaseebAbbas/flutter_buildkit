@@ -28,13 +28,22 @@ void main() {
         'flutter gen-l10n',
       ]);
       expect(plan[2].command, [
-        'flutter',
-        'pub',
+        'dart',
         'run',
         'build_runner',
         'build',
-        '--delete-conflicting-outputs',
       ]);
+    });
+
+    test('build_runner runs through dart, following the flutter command', () {
+      List<String> cmd(String flutter) =>
+          planPreBuild(cfg({'flutter': flutter}), [PreBuildStep.buildRunner])
+              .single
+              .command;
+      expect(
+          cmd('fvm flutter'), ['fvm', 'dart', 'run', 'build_runner', 'build']);
+      expect(cmd('/sdk/bin/flutter'),
+          ['/sdk/bin/dart', 'run', 'build_runner', 'build']);
     });
 
     test('uses the configured flutter command (fvm)', () {

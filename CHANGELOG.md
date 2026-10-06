@@ -1,3 +1,12 @@
+## Unreleased
+
+- Menus no longer repeat their heading on every arrow key: list lines are cut
+  to the terminal width so redraws stay in place.
+- build_runner now runs as `dart run build_runner build` (`flutter pub run`
+  is deprecated), and `--delete-conflicting-outputs` is no longer a default
+  (newer build_runner ignores it). `pre_build.build_runner_args` still passes
+  anything you set.
+
 ## 0.2.0
 
 Safety release. Behavior changes are marked **Changed**.

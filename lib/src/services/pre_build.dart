@@ -9,7 +9,7 @@ enum PreBuildStep {
   /// Runs `flutter clean`.
   clean('flutter clean'),
 
-  /// Runs `flutter pub run build_runner build`.
+  /// Runs `dart run build_runner build`.
   buildRunner('build_runner build'),
 
   /// Runs `flutter gen-l10n` to generate localization code.
@@ -65,6 +65,20 @@ List<PreBuildStep> defaultPreBuildSteps(
           s,
     ];
 
+/// The `dart` counterpart of the configured flutter command (`flutter` ->
+/// `dart`, `fvm flutter` -> `fvm dart`, `C:\\sdk\\flutter.bat` -> `dart.bat`),
+/// since `flutter pub run` is deprecated.
+List<String> _dartCommand(List<String> flutter) {
+  if (flutter.isEmpty) return ['dart'];
+  final last = flutter.last;
+  final swapped = last.replaceFirstMapped(
+      RegExp(r'flutter(\.bat)?$'), (m) => 'dart${m[1] ?? ''}');
+  return [
+    ...flutter.take(flutter.length - 1),
+    swapped == last ? 'dart' : swapped,
+  ];
+}
+
 /// Commands for [steps], in the order that works: `flutter clean` wipes
 /// `.dart_tool`, so it is always followed by `pub get` before code
 /// generation.
@@ -79,8 +93,7 @@ List<PreBuildCommand> planPreBuild(
     ],
     if (chosen.contains(PreBuildStep.buildRunner))
       PreBuildCommand('build_runner build', [
-        ...flutter,
-        'pub',
+        ..._dartCommand(flutter),
         'run',
         'build_runner',
         'build',
