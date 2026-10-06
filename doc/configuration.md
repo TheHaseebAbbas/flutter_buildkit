@@ -52,6 +52,23 @@ line options win for their own settings.
 | `sentry.org`, `sentry.project`, `sentry.url` | none | Sentry organisation, project, self-hosted URL. |
 | `sentry.auth_token` | none | Prefer the `SENTRY_AUTH_TOKEN` variable. |
 | `android.retrace`, `android.ndk_stack` | found on PATH / SDK | Tools for "Trace a crash". |
+| `delete_policy.retain_on` | `[published, alpha, beta, production]` | What keeps a build's symbols and row when it is deleted: `published` (marked published), `play` (any Play upload) or Play track names. Uploads to `internal` do not count by default. |
+| `retention.log_days` | `90` | `prune` removes `build.log` and failed builds older than this many days. |
+| `retention.symbols_keep_last` | none | `prune` removes the local symbols of released builds beyond the newest N per app and flavor, only when already uploaded to Crashlytics or Sentry. |
+
+## Trusting a config
+
+A config can name programs the tool starts (`flutter`, `crashlytics.cli`,
+`sentry.cli`, `android.retrace`, `android.ndk_stack`). The first time a shared
+`flutter_buildkit.yaml` sets any of them, the menu lists them and asks
+"Trust this config?"; the answer is stored per project and per set of
+commands in `~/.flutter_buildkit/trusted.json`, so changing a command asks
+again. Commands from `flutter_buildkit.local.yaml` or the `FBK_*` variables
+are yours and never asked about. The non-interactive commands cannot ask: they
+exit 78 until you run once with `--trust-config` or set `FBK_TRUST_CONFIG=1`.
+
+When loading, a warning is printed if `sentry.auth_token` is in the shared
+YAML, or the Play key lies inside the project without being git-ignored.
 
 ## Environment variables and options
 
@@ -144,3 +161,23 @@ unreleased build also deletes its symbols, so the delete menu warns when they
 were never uploaded. Crashlytics gets the Dart and native symbols (and dSYMs
 on iOS); Sentry gets the whole symbols folder plus the R8 mapping. Crashlytics
 R8 mappings are normally uploaded by its Gradle plugin at build time.
+
+### Crashlytics and the R8 mapping
+
+`flutter_buildkit` uploads Dart and native symbols to Crashlytics with
+`firebase crashlytics:symbols:upload`. It does **not** upload the R8
+`mapping.txt`: Crashlytics needs it to read Java/Kotlin frames of an
+obfuscated Android build, and the Crashlytics Gradle plugin normally sends it
+during `assembleRelease`/`bundleRelease`, so a standard Flutter project with
+the plugin applied is covered. The mapping is still stored in
+`symbols/mapping/` for "Trace a crash", and sent to Google Play (`play.upload_mapping`)
+and Sentry. If your build does not apply the Gradle plugin, upload it yourself;
+see `firebase help crashlytics:mappingfile:upload` for the flags your CLI
+version supports.
+
+### Firebase and Sentry in CI
+
+The Firebase CLI needs a login. In a pipeline set `GOOGLE_APPLICATION_CREDENTIALS`
+to a service account key file with the Firebase Crashlytics Admin role (or pass a
+token through `FIREBASE_TOKEN`); locally `firebase login` is enough. For Sentry
+export `SENTRY_AUTH_TOKEN`. `doctor` shows what is missing.

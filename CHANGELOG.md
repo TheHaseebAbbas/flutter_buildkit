@@ -74,6 +74,39 @@ Ledger, Google Play and library:
   spaces work (`splitCommandLine`).
 - A warning is shown when the version code is not higher than one already in
   the ledger for the app (menu and `build`).
+- Releases carry more provenance. `BuildRecord` gained `signing` (certificate
+  SHA-256 and subject, read with `apksigner` or `keytool`; a warning when a
+  release is debug-signed or differs from earlier releases of the package),
+  `buildIds` (ELF build ids of the Dart symbols) and `environment` (OS, host,
+  Flutter channel and revision, Dart SDK, engine, hash of the dart-define
+  file). `trace auto` and the menu match a crash's `build_id` (or version) to
+  a build and warn on a mismatch.
+- Google Play pre-flight: `publish` stops before uploading when the version
+  code is already on Play (any track) or the AAB is debug-signed.
+  `PlayPublisher.checkAccess` backs `doctor --online`.
+- New commands: `doctor` (tools, Play key, disk, output folder; exit 75),
+  `verify` (ledger vs disk: files, hashes, symbols, orphans; exit 76) and
+  `prune` (old logs, failed builds, uploaded symbols per `retention:`).
+  `list`/`export` got `--bom`; the menu's CSV export writes a BOM for Excel.
+- **Changed:** an upload to the `internal` track no longer makes a build
+  immortal. What keeps symbols and the row on delete is
+  `delete_policy.retain_on` (default `published, alpha, beta, production`;
+  `play` restores "any upload"). Deleting a build that was published once and
+  unmarked needs its id typed (menu) or `--force`.
+- **Changed:** the ledger JSON stores `publishedAt`, `play` and
+  `symbolUploads` at the top level; `status` is derived and ignored on load.
+  Files from 0.1.x are still read, and a file saved by 0.2 keeps older tools
+  working only for the derived fields.
+- **Changed:** a config that names executables in the shared file
+  (`flutter`, `*.cli`, `android.*`) must be trusted: the menu asks once, the
+  non-interactive commands exit 78 until `--trust-config` / `FBK_TRUST_CONFIG=1`.
+  Warnings for a Sentry token in the YAML and an un-ignored Play key inside
+  the project. `AppConfig` gained `sharedCommands`, `warnings`, `retainOn`,
+  `logRetentionDays` and `symbolsKeepLast`; new `ConfigTrust`.
+- Mapping and native symbol folders are found by listing
+  `outputs/mapping/`, so multi-dimension flavors (`devFreeRelease`) work.
+- Docs: Crashlytics and the R8 mapping, Firebase auth in CI, trusting a
+  config, provenance, verify and prune.
 - Docs: README (install globally, `dart run flutter_buildkit:fbk`), new
   `doc/ci.md` and `doc/security.md`, config overlay and ledger lock.
 

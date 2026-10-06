@@ -12,6 +12,8 @@ import 'ledger/ledger.dart';
 import 'model/build_options.dart';
 import 'model/build_record.dart';
 import 'services/build_manager.dart';
+import 'services/doctor.dart';
+import 'services/maintenance.dart';
 import 'services/flutter_builder.dart';
 import 'services/play_publisher.dart';
 import 'services/pre_build.dart';
@@ -50,6 +52,12 @@ abstract final class ExitCodes {
   /// The ledger could not be read or written.
   static const ledger = 74;
 
+  /// `doctor` found a problem that stops a command from working.
+  static const checkFailed = 75;
+
+  /// `verify` found differences between the ledger and the disk.
+  static const verifyFailed = 76;
+
   /// The configuration is invalid.
   static const config = 78;
 
@@ -66,6 +74,25 @@ void addCommandOptions(ArgParser parser) {
         negatable: false,
         help: 'Confirm destructive or production actions (delete, publish to '
             'the production track).')
+    ..addFlag('bom',
+        negatable: false,
+        help: 'export csv: start the file with a UTF-8 BOM (for Excel).')
+    ..addFlag('force',
+        negatable: false,
+        help: 'delete: also remove symbols and rows of builds that were once '
+            'published (their mark was cleared).')
+    ..addFlag('online',
+        negatable: false,
+        help: 'doctor: also try the Play key against Google Play.')
+    ..addFlag('quick',
+        negatable: false,
+        help: 'verify: check existence and size only, skip SHA-256.')
+    ..addOption('log-days',
+        help: 'prune: remove build logs and failed builds older than N days '
+            '(default: retention.log_days).')
+    ..addOption('symbols-keep',
+        help: 'prune: keep local symbols of the newest N released builds per '
+            'flavor (default: retention.symbols_keep_last).')
     ..addFlag('dry-run',
         negatable: false, help: 'Show what delete would do; change nothing.')
     ..addMultiOption('flavor',
@@ -171,10 +198,19 @@ class Cli {
     'delete',
     'list',
     'export',
+    'doctor',
+    'verify',
+    'prune',
   };
 
   /// Commands that need the project and configuration.
-  static const needsProject = {'build', 'publish', 'symbols', 'trace'};
+  static const needsProject = {
+    'build',
+    'publish',
+    'symbols',
+    'trace',
+    'doctor'
+  };
 
   late bool _json;
 
@@ -193,6 +229,9 @@ class Cli {
         'delete' => await _delete(args, rest),
         'list' => _list(args),
         'export' => await _export(args, rest),
+        'doctor' => await _doctor(args),
+        'verify' => await _verify(args),
+        'prune' => await _prune(args),
         _ => throw _Usage('Unknown command "$command".'),
       };
     } on _Usage catch (e) {
@@ -335,7 +374,8 @@ class Cli {
     if (format == null) {
       throw _Usage('Unknown format "${rest.first}". Use csv, tsv or json.');
     }
-    final text = const LedgerExporter().export(_filtered(a), format);
+    final text = const LedgerExporter()
+        .export(_filtered(a), format, bom: a['bom'] as bool);
     if (rest.length > 1) {
       final file = File(rest[1]);
       await file.parent.create(recursive: true);
@@ -344,6 +384,103 @@ class Cli {
       out.write(text);
     }
     return ExitCodes.ok;
+  }
+
+  // ---- doctor, verify, prune ---------------------------------------------
+
+  Future<int> _doctor(ArgResults a) async {
+    final checks = await Doctor(
+            project: _project,
+            config: _config,
+            ledger: ledger,
+            runner: ProcessRunner(outputToStderr: _json))
+        .run(online: a['online'] as bool);
+    if (_json) {
+      _emit([for (final c in checks) c.toJson()]);
+    } else {
+      for (final c in checks) {
+        final mark = switch (c.level) {
+          CheckLevel.ok => 'ok  ',
+          CheckLevel.warn => 'warn',
+          CheckLevel.fail => 'FAIL',
+        };
+        out.writeln('[$mark] ${c.name}: ${c.detail}');
+        if (c.level != CheckLevel.ok && c.hint != null) {
+          out.writeln('       ${c.hint}');
+        }
+      }
+    }
+    return checks.any((c) => c.level == CheckLevel.fail)
+        ? ExitCodes.checkFailed
+        : ExitCodes.ok;
+  }
+
+  Future<int> _verify(ArgResults a) async {
+    final report = await verifyLedger(ledger, hash: !(a['quick'] as bool));
+    if (_json) {
+      _emit({
+        'checked': report.checked,
+        'ok': report.ok,
+        'issues': [for (final i in report.issues) i.toJson()],
+      });
+    } else if (report.ok) {
+      out.writeln('${report.checked} build(s) checked; the ledger matches the '
+          'disk.');
+    } else {
+      for (final i in report.issues) {
+        out.writeln('${i.kind}: ${i.message}');
+      }
+      out.writeln('${report.issues.length} problem(s) in '
+          '${report.checked} build(s).');
+    }
+    return report.ok ? ExitCodes.ok : ExitCodes.verifyFailed;
+  }
+
+  Future<int> _prune(ArgResults a) async {
+    final dryRun = a['dry-run'] as bool;
+    if (!dryRun && !(a['yes'] as bool)) {
+      throw _Usage('prune removes files. Add --dry-run to see what would '
+          'happen, or --yes to do it.');
+    }
+    int? number(String name, int? fallback) {
+      final v = a[name] as String?;
+      if (v == null) return fallback;
+      final n = int.tryParse(v);
+      if (n == null || n < 1) throw _Usage('--$name needs a number above 0.');
+      return n;
+    }
+
+    final retainOn = config?.retainOn ?? BuildManager.defaultRetainOn;
+    final result = await pruneBuilds(
+      ledger,
+      BuildManager(ledger, retainOn: retainOn),
+      logDays: number('log-days', config?.logRetentionDays),
+      symbolsKeepLast: number('symbols-keep', config?.symbolsKeepLast),
+      dryRun: dryRun,
+    );
+    if (_json) {
+      _emit({
+        'dryRun': dryRun,
+        'logs': [for (final r in result.logs) r.id],
+        'failedBuilds': [for (final r in result.failedBuilds) r.id],
+        'symbols': [for (final r in result.symbols) r.id],
+        'failed': {
+          for (final e in result.failed.entries) e.key.id: '${e.value}',
+        },
+      });
+    } else {
+      final verb = dryRun ? 'Would remove' : 'Removed';
+      out.writeln('$verb ${result.logs.length} build log(s), '
+          '${result.failedBuilds.length} failed build(s) and the local '
+          'symbols of ${result.symbols.length} build(s).');
+      for (final r in result.symbols) {
+        out.writeln('  symbols of ${r.id} (${r.flavorLabel} ${r.version})');
+      }
+      for (final e in result.failed.entries) {
+        err.writeln('Could not prune ${e.key.id}: ${e.value}');
+      }
+    }
+    return result.failed.isEmpty ? ExitCodes.ok : ExitCodes.deleteFailed;
   }
 
   // ---- mark and delete ---------------------------------------------------
@@ -376,7 +513,18 @@ class Cli {
           'happen, or --yes to do it.');
     }
     final picks = _pick(rest, allowLatest: false);
-    final result = await BuildManager(ledger).delete(picks, dryRun: dryRun);
+    final retainOn = config?.retainOn ?? BuildManager.defaultRetainOn;
+    final once = [
+      for (final r in picks)
+        if (!r.isRetainedBy(retainOn) && r.everPublished) r.id,
+    ];
+    if (once.isNotEmpty && !dryRun && !(a['force'] as bool)) {
+      throw _Usage('${once.join(', ')} was published once and the mark was '
+          'cleared, so delete would remove its symbols and row too. Add '
+          '--force to do that.');
+    }
+    final result = await BuildManager(ledger, retainOn: retainOn)
+        .delete(picks, dryRun: dryRun);
     if (_json) {
       _emit({
         'dryRun': dryRun,
@@ -504,7 +652,6 @@ class Cli {
   }
 
   Future<int> _trace(ArgResults a, List<String> rest) async {
-    final r = _pick(rest).single;
     final String text;
     if (a['file'] case final String path) {
       final file = File(path);
@@ -514,6 +661,18 @@ class Cli {
       text = await _readStdin();
     }
     if (text.trim().isEmpty) throw _Usage('The stack trace is empty.');
+    BuildRecord r;
+    if (rest.length == 1 && rest.first == 'auto') {
+      r = matchBuild(ledger.records, text) ??
+          (throw _Usage('No build in the ledger matches this trace (no '
+              'recorded build_id or version). Name the build: trace <id>.'));
+      err.writeln('Using build ${r.id} (${r.version}).');
+    } else {
+      r = _pick(rest).single;
+      if (buildMismatchWarning(r, text) case final w?) {
+        err.writeln('Warning: $w');
+      }
+    }
     final kind = switch (a['kind'] as String?) {
       null => null,
       final k => TraceKind.values.where((t) => t.name == k).firstOrNull ??

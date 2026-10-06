@@ -53,6 +53,44 @@ class TraceResult {
   final int exitCode;
 }
 
+/// The Dart `build_id` a crash report names (`build_id: 'abc...'`), or null.
+String? traceBuildId(String text) =>
+    RegExp(r'''build_id:\s*['"]?([0-9a-fA-F]{8,})''')
+        .firstMatch(text)
+        ?.group(1)
+        ?.toLowerCase();
+
+/// The build that produced the crash in [text], by Dart build id first, then
+/// by a `versionName+versionCode` that appears in the report. Null when
+/// nothing matches or several builds share the version.
+BuildRecord? matchBuild(Iterable<BuildRecord> records, String text) {
+  final id = traceBuildId(text);
+  if (id != null) {
+    final byId = records.where((r) => r.buildIds.values.contains(id)).toList();
+    if (byId.isNotEmpty) return byId.first;
+  }
+  final byVersion = records
+      .where((r) =>
+          !r.isFailed &&
+          RegExp('\\b${RegExp.escape(r.versionName)}\\s*[+(]\\s*'
+                  '${r.versionCode}\\b')
+              .hasMatch(text))
+      .toList();
+  return byVersion.length == 1 ? byVersion.single : null;
+}
+
+/// A warning when the trace's build id is not one of [r]'s, or null when it
+/// matches or the trace names none.
+String? buildMismatchWarning(BuildRecord r, String text) {
+  final id = traceBuildId(text);
+  if (id == null || r.buildIds.values.contains(id)) return null;
+  return r.buildIds.isEmpty
+      ? 'The trace has build_id $id but build ${r.id} has no recorded build '
+          'id, so the match cannot be checked.'
+      : 'The trace has build_id $id, which is not one of build ${r.id}\'s '
+          '(${r.buildIds.values.join(', ')}). The frames below may be wrong.';
+}
+
 /// Guesses what kind of stack trace [text] is.
 TraceKind detectTraceKind(String text) {
   if (RegExp(r'\*\*\* \*\*\* \*\*\*|build_id:|isolate_dso_base|#\d+\s+abs ')

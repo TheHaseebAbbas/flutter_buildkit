@@ -67,10 +67,14 @@ class LedgerExporter {
   ];
 
   /// Renders [records] in the given [format].
-  String export(List<BuildRecord> records, ExportFormat format) =>
+  ///
+  /// [bom] starts a CSV with a UTF-8 byte order mark, which Excel needs to
+  /// read non-ASCII names correctly; other formats ignore it.
+  String export(List<BuildRecord> records, ExportFormat format,
+          {bool bom = false}) =>
       switch (format) {
         ExportFormat.json => toJson(records),
-        ExportFormat.csv => toCsv(records),
+        ExportFormat.csv => toCsv(records, bom: bom),
         ExportFormat.tsv => toTsv(records),
       };
 
@@ -79,8 +83,8 @@ class LedgerExporter {
       .convert([for (final r in records) r.toJson()]);
 
   /// RFC 4180 CSV with CRLF line endings, so Excel and Sheets open it as is.
-  String toCsv(List<BuildRecord> records) {
-    final buffer = StringBuffer();
+  String toCsv(List<BuildRecord> records, {bool bom = false}) {
+    final buffer = StringBuffer(bom ? '\uFEFF' : '');
     for (final row in [columns, ...records.map(row)]) {
       buffer
         ..write(row.map(_csvField).join(','))

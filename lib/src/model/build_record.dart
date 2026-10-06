@@ -132,6 +132,46 @@ class BuildFailure {
       json['message'] as String? ?? '');
 }
 
+/// Who signed an Android build, read back from the finished file.
+class BuildSigning {
+  /// Creates a signing record.
+  const BuildSigning({
+    required this.sha256,
+    this.subject,
+    this.debugKey = false,
+    this.tool,
+  });
+
+  /// SHA-256 fingerprint of the signing certificate, lower case hex without
+  /// separators.
+  final String sha256;
+
+  /// Certificate subject, such as `CN=Android Debug, O=Android, C=US`.
+  final String? subject;
+
+  /// True when the certificate is the Android debug key.
+  final bool debugKey;
+
+  /// The tool that read it (`apksigner` or `keytool`).
+  final String? tool;
+
+  /// JSON form stored in the ledger.
+  Map<String, Object?> toJson() => {
+        'sha256': sha256,
+        if (subject != null) 'subject': subject,
+        'debugKey': debugKey,
+        if (tool != null) 'tool': tool,
+      };
+
+  /// Reads the JSON form written by [toJson].
+  factory BuildSigning.fromJson(Map<String, Object?> json) => BuildSigning(
+        sha256: json['sha256']! as String,
+        subject: json['subject'] as String?,
+        debugKey: json['debugKey'] as bool? ?? false,
+        tool: json['tool'] as String?,
+      );
+}
+
 /// Something that happened to a build, kept in [BuildRecord.events].
 class BuildEvent {
   /// Creates an event at [at] of the given [kind] with an optional [note].
@@ -140,8 +180,8 @@ class BuildEvent {
   /// When the event happened.
   final DateTime at;
 
-  /// `built`, `build_failed`, `uploaded`, `published`, `unpublished`, `symbols_uploaded` or
-  /// `artifacts_deleted`.
+  /// `built`, `build_failed`, `uploaded`, `published`, `unpublished`, `symbols_uploaded`,
+  /// `symbols_pruned` or `artifacts_deleted`.
   final String kind;
 
   /// Extra detail, such as the Play track or the symbol target; may be null.
@@ -158,6 +198,7 @@ class BuildEvent {
       'unpublished' => 'unmarked as published',
       'symbols_uploaded' => 'debug symbols uploaded$n',
       'artifacts_deleted' => 'APK/AAB/IPA files deleted; symbols kept',
+      'symbols_pruned' => 'local symbols removed (already uploaded)',
       _ => kind,
     };
   }
@@ -210,6 +251,9 @@ class BuildRecord {
     this.notes,
     this.failure,
     this.command,
+    this.signing,
+    this.buildIds = const {},
+    this.environment = const {},
   });
 
   /// Unique id of the build.
@@ -294,6 +338,18 @@ class BuildRecord {
   /// Free form note; null if none.
   final String? notes;
 
+  /// The certificate the Android build is signed with; null when it could
+  /// not be read (no `apksigner`/`keytool`) or for other platforms.
+  final BuildSigning? signing;
+
+  /// ELF build ids of the Dart snapshots, by symbols file name (for example
+  /// `app.android-arm64.symbols`). A crash report's `build_id` matches one.
+  final Map<String, String> buildIds;
+
+  /// Where the build ran: Dart and OS versions, Flutter channel and
+  /// revision, hash of the `--dart-define-from-file`, and so on.
+  final Map<String, String> environment;
+
   /// Set when the build did not finish; such a row has no [artifacts] and
   /// keeps only its `build.log`.
   final BuildFailure? failure;
@@ -320,6 +376,19 @@ class BuildRecord {
   /// ledger entry, debug symbols and mappings forever, so crashes from the
   /// field can still be traced; only its APK/AAB/IPA files may be deleted.
   bool get isReleased => isPublished || isOnPlay;
+
+  /// Whether a delete keeps this build's symbols and row, by the rules in
+  /// [retainOn]: `published` (marked published), `play` (any Play upload) or
+  /// the name of a Play track the build was uploaded to.
+  bool isRetainedBy(Set<String> retainOn) =>
+      (isPublished && retainOn.contains('published')) ||
+      (isOnPlay &&
+          (retainOn.contains('play') || retainOn.contains(play!.track)));
+
+  /// Whether the build was ever marked published, even if the mark was
+  /// cleared later.
+  bool get everPublished =>
+      isPublished || events.any((e) => e.kind == 'published');
 
   /// Whether the APK/AAB/IPA files have been deleted.
   bool get artifactsDeleted => artifactsDeletedAt != null;
@@ -358,6 +427,10 @@ class BuildRecord {
     if (isFailed) return 'none (build failed)';
     final stored = symbolsDir != null || mappingFile != null;
     if (!stored) {
+      if (symbolUploads.isNotEmpty) {
+        return 'uploaded to ${(symbolUploads.keys.toList()..sort()).join(', ')}'
+            ' (local copy removed)';
+      }
       return obfuscated ? 'missing' : 'none (not obfuscated)';
     }
     if (symbolUploads.isEmpty) return 'stored, not uploaded';
@@ -372,6 +445,9 @@ class BuildRecord {
   String get symbolsShort {
     if (isFailed) return '-';
     if (symbolsDir == null && mappingFile == null) {
+      if (symbolUploads.isNotEmpty) {
+        return (symbolUploads.keys.toList()..sort()).join('+');
+      }
       return obfuscated ? 'missing' : '-';
     }
     if (symbolUploads.isEmpty) return 'stored';
@@ -412,6 +488,7 @@ class BuildRecord {
     bool clearPlay = false,
     Map<String, DateTime>? symbolUploads,
     DateTime? artifactsDeletedAt,
+    bool clearSymbols = false,
     String? notes,
   }) {
     final now = DateTime.now().toUtc();
@@ -428,6 +505,8 @@ class BuildRecord {
             BuildEvent(e.value, 'symbols_uploaded', e.key),
       if (artifactsDeletedAt != null && this.artifactsDeletedAt == null)
         BuildEvent(artifactsDeletedAt, 'artifacts_deleted'),
+      if (clearSymbols && (symbolsDir != null || mappingFile != null))
+        BuildEvent(now, 'symbols_pruned'),
     ];
     return BuildRecord(
       id: id,
@@ -443,8 +522,8 @@ class BuildRecord {
       entryPoint: entryPoint,
       outputDir: outputDir,
       artifacts: artifacts,
-      symbolsDir: symbolsDir,
-      mappingFile: mappingFile,
+      symbolsDir: clearSymbols ? null : symbolsDir,
+      mappingFile: clearSymbols ? null : mappingFile,
       obfuscated: obfuscated,
       gitCommit: gitCommit,
       gitBranch: gitBranch,
@@ -459,6 +538,9 @@ class BuildRecord {
       notes: notes ?? this.notes,
       failure: failure,
       command: command,
+      signing: signing,
+      buildIds: buildIds,
+      environment: environment,
     );
   }
 
@@ -489,12 +571,15 @@ class BuildRecord {
           'label': statusLabel,
           'condition': condition,
           'symbolsStatus': symbolsStatus,
-          'publishedAt': publishedAt?.toUtc().toIso8601String(),
-          'play': play?.toJson(),
-          'symbols': {
-            for (final e in symbolUploads.entries)
-              e.key: e.value.toUtc().toIso8601String(),
-          },
+        },
+        // Raw state; `status` above is derived and ignored on load.
+        if (publishedAt != null)
+          'publishedAt': publishedAt!.toUtc().toIso8601String(),
+        if (play != null) 'play': play!.toJson(),
+        // Always written: its presence marks the newer format.
+        'symbolUploads': {
+          for (final e in symbolUploads.entries)
+            e.key: e.value.toUtc().toIso8601String(),
         },
         if (preBuild.isNotEmpty) 'preBuild': preBuild,
         'history': [for (final e in events) e.toJson()],
@@ -503,14 +588,23 @@ class BuildRecord {
         if (notes != null) 'notes': notes,
         if (failure != null) 'failure': failure!.toJson(),
         if (command != null) 'command': command,
+        if (signing != null) 'signing': signing!.toJson(),
+        if (buildIds.isNotEmpty) 'buildIds': buildIds,
+        if (environment.isNotEmpty) 'environment': environment,
       };
 
   /// Reads a record from its ledger JSON; older rows without optional fields are accepted.
   factory BuildRecord.fromJson(Map<String, Object?> json) {
-    final status = (json['status'] as Map?)?.cast<String, Object?>() ?? {};
-    final symbols = (status['symbols'] as Map?)?.cast<String, Object?>() ?? {};
-    final play = status['play'] as Map?;
-    final published = status['publishedAt'] as String?;
+    // Raw fields are the source of truth; files written by 0.1.x kept them
+    // inside the derived `status` object, so fall back to that.
+    final legacy = json.containsKey('symbolUploads')
+        ? const <String, Object?>{}
+        : (json['status'] as Map?)?.cast<String, Object?>() ?? {};
+    final symbols = ((json['symbolUploads'] ?? legacy['symbols']) as Map?)
+            ?.cast<String, Object?>() ??
+        {};
+    final play = (json['play'] ?? legacy['play']) as Map?;
+    final published = (json['publishedAt'] ?? legacy['publishedAt']) as String?;
     return BuildRecord(
       id: json['id']! as String,
       appName: json['appName']! as String,
@@ -559,6 +653,18 @@ class BuildRecord {
           : BuildFailure.fromJson(
               (json['failure']! as Map).cast<String, Object?>()),
       command: json['command'] as String?,
+      signing: json['signing'] == null
+          ? null
+          : BuildSigning.fromJson(
+              (json['signing']! as Map).cast<String, Object?>()),
+      buildIds: {
+        for (final e in ((json['buildIds'] as Map?) ?? const {}).entries)
+          '${e.key}': '${e.value}',
+      },
+      environment: {
+        for (final e in ((json['environment'] as Map?) ?? const {}).entries)
+          '${e.key}': '${e.value}',
+      },
     );
   }
 }

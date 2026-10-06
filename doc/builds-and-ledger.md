@@ -109,12 +109,17 @@ unfinished folder.
 
 ## Delete rules
 
-* A build that was **never published and never uploaded to Play** is removed
+* A build that is **not kept by `delete_policy.retain_on`** is removed
   completely: its folder (files, symbols, mappings) and its ledger row.
-* A **released** build (marked published or uploaded to Play) only loses its
-  APK/AAB/IPA files. Its debug symbols, mappings and ledger row are kept
-  forever, so crashes from the field can still be traced. The row shows
-  `files deleted`.
+* A build that is kept (by default: marked published, or uploaded to the
+  alpha, beta or production track) only loses its APK/AAB/IPA files. Its
+  debug symbols, mappings and ledger row stay, so crashes from the field can
+  still be traced. The row shows `files deleted`. An upload to the `internal`
+  track does not keep a build; add `internal` (or `play` for every upload) to
+  `retain_on` if you want that.
+* A build that was **published once and then unmarked** is deleted like an
+  unreleased one, which would remove its symbols. The menu makes you type its
+  id first; `delete` needs `--force`.
 
 The ledger is a file you can edit by hand, so before removing anything the
 tool checks every path. The build folder must lie **strictly inside** the
@@ -122,6 +127,29 @@ ledger's folder after symlinks are resolved, must not hold another build, and
 must contain a `build_info.json` with the build's id. A build that fails a
 check is reported and left alone. From code, `BuildManager.delete(..., dryRun: true)` runs the checks and
 reports what would be removed without changing anything.
+
+## Provenance, signing and build ids
+
+Each row also records where and how it was made: `environment` (OS, host,
+Flutter channel and revision, Dart SDK, engine revision, SHA-256 of the
+`--dart-define-from-file` file), `signing` (the certificate's SHA-256, subject
+and whether it is the Android debug key, read with `apksigner` or `keytool`)
+and `buildIds` (the ELF build id of each Dart symbols file). A build prints a
+warning when a release is signed with the debug key or with a different
+certificate than the app's earlier releases, and `publish` refuses a
+debug-signed AAB. The derived `status` object in the JSON is for readers only;
+the raw fields (`publishedAt`, `play`, `symbolUploads`) are what is loaded.
+
+## Checking and pruning
+
+* `verify` compares the ledger with the disk: missing folders and files,
+  changed sizes and hashes (`--quick` skips hashing), obfuscated builds with
+  no symbols anywhere, and build folders no row owns. Exit code 76 when
+  something differs.
+* `prune` applies `retention.*` (or `--log-days` / `--symbols-keep`): old
+  `build.log` files, failed builds, and the local symbols of old released
+  builds that were already uploaded. It needs `--dry-run` or `--yes`.
+* `doctor` checks the tools and settings the other commands rely on.
 
 ## Tracing crashes
 
@@ -133,6 +161,12 @@ builds whose files were deleted. It detects the trace type and runs:
 | Obfuscated Dart | `flutter symbolize` | `symbols/dart/` |
 | Android Java/Kotlin | R8 `retrace` | `symbols/mapping/mapping.txt` |
 | Native crash (tombstone) | `ndk-stack` | `symbols/native/<abi>/` |
+
+A crash report's `build_id: '...'` is matched with the recorded `buildIds`:
+`trace auto` (and the menu) pick the right build themselves, and a build that
+does not match is warned about, because frames symbolized against the wrong
+build look plausible but are wrong. The report's `1.2.0+14` version is used
+when there is no id.
 
 `retrace` and `ndk-stack` are found on `PATH`, through `ANDROID_HOME` /
 `ANDROID_NDK_HOME`, or via `android.retrace` / `android.ndk_stack` in the config.

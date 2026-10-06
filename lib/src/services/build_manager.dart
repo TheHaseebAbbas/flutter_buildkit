@@ -11,7 +11,15 @@ import 'flutter_builder.dart';
 /// Ledger operations that also touch the build folders on disk.
 class BuildManager {
   /// Creates a manager that works on [ledger] and its folders.
-  BuildManager(this.ledger);
+  BuildManager(this.ledger, {this.retainOn = defaultRetainOn});
+
+  /// Builds kept after a delete unless the config says otherwise: marked
+  /// published, or uploaded to alpha, beta or production. A QA upload to the
+  /// internal track does not make a build immortal.
+  static const defaultRetainOn = {'published', 'alpha', 'beta', 'production'};
+
+  /// What keeps a build's symbols and row; see [BuildRecord.isRetainedBy].
+  final Set<String> retainOn;
 
   /// The ledger whose records this manager changes.
   final Ledger ledger;
@@ -27,9 +35,9 @@ class BuildManager {
 
   /// Deletes builds.
   ///
-  /// * A build that was never published or uploaded to Play is removed
+  /// * Any other build is removed
   ///   completely: its folder (files, symbols, mappings) and its ledger row.
-  /// * A [BuildRecord.isReleased] build only loses its APK/AAB/IPA files. Its
+  /// * A build kept by [retainOn] only loses its APK/AAB/IPA files. Its
   ///   debug symbols, mappings and ledger row stay, so crashes from the field
   ///   can still be traced.
   ///
@@ -50,7 +58,7 @@ class BuildManager {
     final failed = <BuildRecord, Object>{};
     for (final r in records) {
       try {
-        if (r.isReleased) {
+        if (r.isRetainedBy(retainOn)) {
           if (r.artifactsDeleted) continue;
           final files = await _artifactFiles(r);
           if (!dryRun) {
@@ -62,7 +70,7 @@ class BuildManager {
           }
           filesOnly.add(r);
         } else {
-          final dir = Directory(await _safeBuildDir(r));
+          final dir = Directory(await safeBuildDir(r));
           if (!dryRun) {
             if (await dir.exists()) await dir.delete(recursive: true);
             await pruneEmptyParents(ledger.rootDir, dir.parent);
@@ -80,7 +88,7 @@ class BuildManager {
   }
 
   Future<List<File>> _artifactFiles(BuildRecord r) async {
-    await _safeBuildDir(r);
+    await safeBuildDir(r);
     final files = <File>[];
     for (final a in r.artifacts) {
       final path = ledger.resolve(a.path);
@@ -120,8 +128,9 @@ class BuildManager {
     return p.joinAll([resolved, ...rest]);
   }
 
-  /// Build folder for [r]; throws [StateError] unless it is safe to remove.
-  Future<String> _safeBuildDir(BuildRecord r) async {
+  /// Build folder for [r]; throws [StateError] unless it is safe to remove
+  /// (inside the ledger's folder, owned by [r] and holding no other build).
+  Future<String> safeBuildDir(BuildRecord r) async {
     final dir = ledger.resolve(r.outputDir);
     final root = await _canonical(ledger.rootDir);
     final real = await _canonical(dir);

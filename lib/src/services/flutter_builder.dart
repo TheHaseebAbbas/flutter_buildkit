@@ -7,10 +7,12 @@ import 'package:path/path.dart' as p;
 
 import '../build_paths.dart';
 import '../config.dart';
+import '../dart_entries.dart';
 import '../flutter_project.dart';
 import '../ledger/ledger.dart';
 import '../model/build_options.dart';
 import '../model/build_record.dart';
+import 'build_inspector.dart';
 import 'process_runner.dart';
 
 /// Everything the user chose for one build.
@@ -201,7 +203,8 @@ class FlutterBuilder {
     log('\$ $commandLine\n');
     final logFile = p.join(outDir, buildLogName);
     await File(logFile).writeAsString('\$ $commandLine\n');
-    final flutterVersion = await _flutterVersion();
+    final flutterInfo = await _flutterInfo();
+    final flutterVersion = flutterInfo['frameworkVersion'] as String?;
     final before = _snapshot(request.type);
     final int exitCode;
     try {
@@ -267,6 +270,18 @@ class FlutterBuilder {
     }
 
     final (commit, branch) = await project.gitInfo();
+    final signing = request.type.isAndroid
+        ? await SigningInspector(runner)
+            .inspect(File(ledger.resolve(artifacts.first.path)))
+        : null;
+    _checkSigning(request, signing);
+    final buildIds = symbolsDir == null
+        ? const <String, String>{}
+        : dartBuildIds(Directory(symbolsDir));
+    if (request.willObfuscate && buildIds.isEmpty) {
+      log('Warning: no Dart build id could be read from the symbols; crash '
+          'reports cannot be matched to this build automatically.');
+    }
     final record = BuildRecord(
       id: id,
       appName: project.appName,
@@ -281,6 +296,9 @@ class FlutterBuilder {
       entryPoint: request.entryPoint,
       outputDir: ledger.relativize(outDir),
       artifacts: artifacts,
+      signing: signing,
+      buildIds: buildIds,
+      environment: await _environment(request, flutterInfo),
       symbolsDir:
           Directory(p.join(outDir, BuildPaths.symbolsFolder)).existsSync()
               ? ledger.relativize(p.join(outDir, BuildPaths.symbolsFolder))
@@ -443,14 +461,31 @@ class FlutterBuilder {
   static String variantName(BuildRequest r) =>
       r.flavor == null ? r.mode.name : '${r.flavor}${r.mode.capitalized}';
 
+  /// The folder under [parent] whose name is [variant], matched ignoring case
+  /// and punctuation (Gradle spells multi-dimension variants its own way,
+  /// such as `devFreeRelease`). Falls back to [variant] itself.
+  static String _existingVariant(String parent, String variant) {
+    final dir = Directory(parent);
+    if (!dir.existsSync()) return variant;
+    final want = normalizeName(variant);
+    for (final e in dir.listSync()) {
+      final name = p.basename(e.path);
+      if (e is Directory && (name == variant || normalizeName(name) == want)) {
+        return name;
+      }
+    }
+    return variant;
+  }
+
   /// Copies the R8/ProGuard output (`mapping.txt`, `usage.txt`, `seeds.txt`,
   /// ...) to `symbols/mapping/` and the unstripped native libraries to
   /// `symbols/native/`. Returns the ledger path of `mapping.txt`, if any.
   Future<String?> _storeAndroidSymbols(
       BuildRequest r, String outDir, DateTime since) async {
     final cutoff = _wholeSecond(since);
-    final variant = variantName(r);
     final intermediates = p.join(project.dir, 'build', 'app');
+    final variant = _existingVariant(
+        p.join(intermediates, 'outputs', 'mapping'), variantName(r));
 
     String? mappingFile;
     final mappingDir =
@@ -480,17 +515,72 @@ class FlutterBuilder {
     return mappingFile;
   }
 
-  Future<String?> _flutterVersion() async {
+  /// `flutter --version --machine` as a map; empty when it cannot be read.
+  Future<Map<String, Object?>> _flutterInfo() async {
     try {
       final r = await runner.run([...config.flutter, '--version', '--machine'],
           workingDirectory: project.dir);
       final out = '${r.stdout}';
       final start = out.indexOf('{');
-      if (r.exitCode != 0 || start < 0) return null;
-      final json = jsonDecode(out.substring(start)) as Map<String, Object?>;
-      return json['frameworkVersion'] as String?;
+      if (r.exitCode != 0 || start < 0) return const {};
+      return (jsonDecode(out.substring(start)) as Map).cast<String, Object?>();
     } on Object {
-      return null;
+      return const {};
+    }
+  }
+
+  /// Where the build ran, for reproducing it later.
+  Future<Map<String, String>> _environment(
+      BuildRequest request, Map<String, Object?> info) async {
+    String? defineHash;
+    final defineFile = request.dartDefineFile;
+    if (defineFile != null) {
+      final f = File(p.isAbsolute(defineFile)
+          ? defineFile
+          : p.join(project.dir, defineFile));
+      if (f.existsSync()) {
+        defineHash = (await sha256.bind(f.openRead()).first).toString();
+      }
+    }
+    final values = <String, String?>{
+      'os': '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+      'host': Platform.localHostname,
+      'flutterChannel': info['channel'] as String?,
+      'flutterRevision': info['frameworkRevisionShort'] as String? ??
+          info['frameworkRevision'] as String?,
+      'dartSdk': info['dartSdkVersion'] as String?,
+      'engineRevision': info['engineRevision'] as String?,
+      'dartDefineFileSha256': defineHash,
+    };
+    return {
+      for (final e in values.entries)
+        if (e.value != null && e.value!.isNotEmpty) e.key: e.value!,
+    };
+  }
+
+  /// Warns about a debug-signed release build, or a certificate that
+  /// differs from the app's earlier release builds.
+  void _checkSigning(BuildRequest request, BuildSigning? signing) {
+    if (signing == null) return;
+    if (request.mode == BuildMode.release && signing.debugKey) {
+      log('Warning: this release build is signed with the Android DEBUG key. '
+          'Google Play will reject it; check the release signing config.');
+    }
+    final earlier = ledger.records
+        .where((r) =>
+            !r.isFailed &&
+            r.mode == BuildMode.release &&
+            r.packageName != null &&
+            r.packageName == request.packageName &&
+            r.signing != null)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (earlier.isNotEmpty &&
+        request.mode == BuildMode.release &&
+        earlier.first.signing!.sha256 != signing.sha256) {
+      log('Warning: the signing certificate (${signing.sha256.substring(0, 16)}...) '
+          'differs from build ${earlier.first.id} '
+          '(${earlier.first.signing!.sha256.substring(0, 16)}...).');
     }
   }
 

@@ -107,6 +107,9 @@ void main() {
     expect(record.symbolsDir, endsWith('symbols'));
     expect(record.preBuild, ['flutter clean', 'flutter pub get']);
     expect(record.flutterVersion, '9.9.9');
+    expect(record.environment['os'], isNotEmpty);
+    // The fake tools print JSON, which is not a certificate.
+    expect(record.signing, isNull);
     expect(record.artifacts.single.sha256, isNotEmpty);
     expect(ledger.records, hasLength(1));
   });

@@ -174,6 +174,11 @@ class AppConfig {
     this.play = const PlayConfig(),
     this.crashlytics = const CrashlyticsConfig(),
     this.sentry = const SentryConfig(),
+    this.retainOn = const {'published', 'alpha', 'beta', 'production'},
+    this.logRetentionDays = 90,
+    this.symbolsKeepLast,
+    this.sharedCommands = const {},
+    this.warnings = const [],
   });
 
   /// Config file names looked for in the project root, in order.
@@ -188,6 +193,28 @@ class AppConfig {
   /// The personal overlay (`flutter_buildkit.local.yaml`) merged over
   /// [configFile], or null when there is none.
   final String? localConfigFile;
+
+  /// What keeps a build's symbols and row when it is deleted: `published`,
+  /// `play` (any upload) or Play track names. See `BuildRecord.isRetainedBy`.
+  final Set<String> retainOn;
+
+  /// `prune` removes `build.log` files, and failed builds, older than this
+  /// many days. Null keeps them forever.
+  final int? logRetentionDays;
+
+  /// `prune` removes the local symbols of released builds beyond the newest
+  /// N per app and flavor, but only those already uploaded to a crash tool.
+  /// Null keeps every build's symbols.
+  final int? symbolsKeepLast;
+
+  /// Executables the shared config file chooses (`flutter`, `sentry.cli`, ...),
+  /// by key. Running a cloned repo's config launches these, so the front ends
+  /// ask before the first run (see `ConfigTrust`). Empty when the user's own
+  /// overlay or environment supplies them.
+  final Map<String, String> sharedCommands;
+
+  /// Problems noticed while loading, such as a token stored in the YAML.
+  final List<String> warnings;
 
   /// Root of the build folder tree, relative to [projectDir] unless absolute.
   final String outputDir;
@@ -290,6 +317,7 @@ class AppConfig {
       }
     }
     Map<Object?, Object?> y = const {};
+    final warnings = <String>[];
     if (path != null) {
       final file = File(path);
       if (!file.existsSync()) {
@@ -301,6 +329,7 @@ class AppConfig {
       }
       y = (doc as Map?) ?? const {};
     }
+    final shared = Map<Object?, Object?>.of(y);
     // A personal overlay next to the config (`flutter_buildkit.local.yaml`)
     // wins over it: commit the shared file, keep secrets and machine paths
     // in the overlay and out of git.
@@ -322,9 +351,98 @@ class AppConfig {
       }
       y = _merge(y, (doc as Map?) ?? const {});
     }
-    return fromYaml(projectDir, y,
+    final config = fromYaml(projectDir, y,
         env: env, configFile: path, localConfigFile: local);
+    if (_map(shared['sentry'])['auth_token'] != null &&
+        env['SENTRY_AUTH_TOKEN'] == null) {
+      warnings.add('sentry.auth_token is stored in ${p.basename(path!)}. '
+          'Use SENTRY_AUTH_TOKEN or the local overlay so it stays out of git.');
+    }
+    final key = config.play.serviceAccountJson;
+    if (key != null &&
+        p.isWithin(projectDir, key) &&
+        !_gitIgnored(projectDir, key)) {
+      warnings.add('The Play key $key is inside the project and not ignored '
+          'by git. Move it out or add it to .gitignore.');
+    }
+    return AppConfig._withShared(
+        config, _sharedCommands(shared, y, env), warnings);
   }
+
+  static const _commandKeys = {
+    'flutter': ['flutter'],
+    'crashlytics.cli': ['crashlytics', 'cli'],
+    'sentry.cli': ['sentry', 'cli'],
+    'android.retrace': ['android', 'retrace'],
+    'android.ndk_stack': ['android', 'ndk_stack'],
+  };
+
+  static const _commandEnv = {
+    'flutter': 'FBK_FLUTTER',
+    'android.retrace': 'FBK_RETRACE',
+    'android.ndk_stack': 'FBK_NDK_STACK',
+  };
+
+  /// Commands set by the shared file that neither the overlay nor the
+  /// environment replaced.
+  static Map<String, String> _sharedCommands(Map<Object?, Object?> shared,
+      Map<Object?, Object?> merged, Map<String, String> env) {
+    Object? at(Map<Object?, Object?> m, List<String> path) {
+      Object? cur = m;
+      for (final k in path) {
+        cur = cur is Map ? cur[k] : null;
+      }
+      return cur;
+    }
+
+    final out = <String, String>{};
+    for (final e in _commandKeys.entries) {
+      final v = at(shared, e.value);
+      if (v == null || env.containsKey(_commandEnv[e.key])) continue;
+      if ('${at(merged, e.value)}' != '$v') continue;
+      out[e.key] = v is List ? v.join(' ') : '$v';
+    }
+    return out;
+  }
+
+  static bool _gitIgnored(String dir, String file) {
+    try {
+      final r = Process.runSync('git', ['check-ignore', '-q', file],
+          workingDirectory: dir);
+      return r.exitCode != 1;
+    } on ProcessException {
+      return true; // no git: nothing to say
+    }
+  }
+
+  AppConfig._withShared(
+      AppConfig c, Map<String, String> commands, List<String> warnings)
+      : this(
+          projectDir: c.projectDir,
+          configFile: c.configFile,
+          localConfigFile: c.localConfigFile,
+          outputDir: c.outputDir,
+          outputLayout: c.outputLayout,
+          fileName: c.fileName,
+          entryPoints: c.entryPoints,
+          ledgerFile: c.ledgerFile,
+          flutter: c.flutter,
+          obfuscate: c.obfuscate,
+          splitPerAbi: c.splitPerAbi,
+          extraBuildArgs: c.extraBuildArgs,
+          preBuild: c.preBuild,
+          androidRetrace: c.androidRetrace,
+          androidNdkStack: c.androidNdkStack,
+          flavors: c.flavors,
+          play: c.play,
+          crashlytics: c.crashlytics,
+          sentry: c.sentry,
+          retainOn: c.retainOn,
+          logRetentionDays: c.logRetentionDays,
+          symbolsKeepLast: c.symbolsKeepLast,
+          sharedCommands: commands,
+          warnings: warnings,
+        );
 
   /// Builds a config from the parsed YAML map [y].
   ///
@@ -354,6 +472,14 @@ class AppConfig {
       projectDir: projectDir,
       configFile: configFile,
       localConfigFile: localConfigFile,
+      logRetentionDays: _map(y['retention']).containsKey('log_days')
+          ? _positiveInt(_map(y['retention'])['log_days'], 'retention.log_days')
+          : 90,
+      symbolsKeepLast: _positiveInt(_map(y['retention'])['symbols_keep_last'],
+          'retention.symbols_keep_last'),
+      retainOn: y['delete_policy'] == null
+          ? const {'published', 'alpha', 'beta', 'production'}
+          : _stringList(_map(y['delete_policy'])['retain_on']).toSet(),
       outputDir: y['output_dir'] as String? ?? 'app_builds',
       outputLayout: _layout(y['output_layout']),
       fileName: _fileName(y['file_name']),
@@ -398,6 +524,12 @@ class AppConfig {
         url: env['SENTRY_URL'] ?? sentryY['url'] as String?,
       ),
     );
+  }
+
+  static int? _positiveInt(Object? v, String key) {
+    if (v == null) return null;
+    if (v is int && v > 0) return v;
+    throw ConfigException('$key must be a whole number above 0 (or left out).');
   }
 
   static String? _layout(Object? v) {
@@ -507,6 +639,9 @@ class AppConfig {
       'sentry.project': sentry.project ?? '(not set)',
       'sentry.url': sentry.url ?? 'sentry.io',
       'sentry.auth_token': mask(sentry.authToken),
+      'delete_policy.retain_on': (retainOn.toList()..sort()).join(' '),
+      'retention.log_days': logRetentionDays?.toString() ?? '(forever)',
+      'retention.symbols_keep_last': symbolsKeepLast?.toString() ?? '(all)',
       'android.retrace': androidRetrace ?? '(PATH / ANDROID_HOME)',
       'android.ndk_stack': androidNdkStack ?? '(PATH / ANDROID_NDK_HOME)',
     };
@@ -595,6 +730,15 @@ flavors:
   # prod:
   #   target: lib/main_prod.dart
   #   package_name: com.example.app
+
+# What "delete" keeps (symbols, mappings and the ledger row) and what "prune"
+# removes. retain_on lists "published", "play" (any Play upload) or Play tracks.
+# delete_policy:
+#   retain_on: [published, alpha, beta, production]
+# retention:
+#   log_days: 90               # prune removes build.log and failed builds older than this
+#   symbols_keep_last: 10      # prune removes local symbols of older released builds
+#                              # (only ones already uploaded to Crashlytics or Sentry)
 
 # Tools used by the "Trace crash" menu when they are not on PATH.
 # android:

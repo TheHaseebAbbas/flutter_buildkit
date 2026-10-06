@@ -93,6 +93,10 @@ class PlayPublisher {
       throw PlayException('Google Play rejects debuggable builds; this build '
           'is ${record.mode.name}. Build with --release.');
     }
+    if (record.signing?.debugKey ?? false) {
+      throw PlayException('This build is signed with the Android debug key; '
+          'Google Play rejects it. Set up release signing and build again.');
+    }
     final keyPath = config.play.serviceAccountJson;
     if (keyPath == null && httpClient == null) {
       throw PlayException('No Play credentials. Set play.service_account_json '
@@ -130,6 +134,7 @@ class PlayPublisher {
       final edit = await api.edits.insert(ap.AppEdit(), packageName);
       final editId = edit.id!;
 
+      await _checkVersionCode(api, record, packageName, editId);
       final existing = await _existingReleases(api, packageName, editId, track);
       final unfinished = [
         for (final r in existing)
@@ -202,6 +207,61 @@ class PlayPublisher {
         editId: editId,
       );
       return await ledger.update(record.id, (r) => r.copyWith(play: upload));
+    } on ap.DetailedApiRequestError catch (e) {
+      throw PlayException('Google Play API error ${e.status}: ${e.message}');
+    } finally {
+      if (httpClient == null) client.close();
+    }
+  }
+
+  /// Fails early when Play already has this version code, instead of after
+  /// the upload. Skipped quietly when the tracks cannot be read.
+  Future<void> _checkVersionCode(ap.AndroidPublisherApi api, BuildRecord record,
+      String packageName, String editId) async {
+    final used = <int>{};
+    try {
+      final tracks = await api.edits.tracks.list(packageName, editId);
+      for (final t in tracks.tracks ?? const <ap.Track>[]) {
+        for (final r in t.releases ?? const <ap.TrackRelease>[]) {
+          for (final c in r.versionCodes ?? const <String>[]) {
+            final n = int.tryParse(c);
+            if (n != null) used.add(n);
+          }
+        }
+      }
+    } on Object {
+      log('Could not read the existing version codes; skipping that check.');
+      return;
+    }
+    if (used.contains(record.versionCode)) {
+      await _discardEdit(api, packageName, editId);
+      throw PlayException('Google Play already has version code '
+          '${record.versionCode}. Build again with a higher --build-number '
+          '(highest on Play: ${used.reduce((a, b) => a > b ? a : b)}).');
+    }
+    final highest = used.isEmpty ? 0 : used.reduce((a, b) => a > b ? a : b);
+    if (record.versionCode < highest) {
+      log('Warning: version code ${record.versionCode} is lower than '
+          '$highest already on Play.');
+    }
+  }
+
+  /// Checks that the service account can open an edit for [packageName] (and
+  /// discards it). Throws [PlayException] with the reason when it cannot.
+  Future<void> checkAccess(String packageName) async {
+    final keyPath = config.play.serviceAccountJson;
+    if (keyPath == null && httpClient == null) {
+      throw PlayException('No Play credentials are configured.');
+    }
+    final client = httpClient ??
+        await clientViaServiceAccount(
+            ServiceAccountCredentials.fromJson(
+                File(keyPath!).readAsStringSync()),
+            [ap.AndroidPublisherApi.androidpublisherScope]);
+    try {
+      final api = ap.AndroidPublisherApi(client);
+      final edit = await api.edits.insert(ap.AppEdit(), packageName);
+      await _discardEdit(api, packageName, edit.id!);
     } on ap.DetailedApiRequestError catch (e) {
       throw PlayException('Google Play API error ${e.status}: ${e.message}');
     } finally {
