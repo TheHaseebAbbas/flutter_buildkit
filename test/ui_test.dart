@@ -264,6 +264,64 @@ void main() {
     expect(lines.length, lessThanOrEqualTo(5 + 4));
   });
 
+  group('list windowing', () {
+    test('a list that fits shows every item and no indicator', () {
+      expect(selectWindow(10, 4, 10), (0, 10));
+      expect(selectWindow(3, 0, 12), (0, 3));
+      final m = SelectModel([for (var i = 0; i < 10; i++) SelectItem('r$i')]);
+      final lines = renderSelect('Menu', m, maxRows: 10);
+      expect(lines.any((l) => l.contains('more')), isFalse);
+      expect(lines.where((l) => l.contains(' r')).length, 10);
+    });
+
+    test('indicators take part of the budget and only when needed', () {
+      // At the top only "below" is needed, so budget-1 items show.
+      expect(selectWindow(14, 0, 8), (0, 7));
+      // At the bottom only "above".
+      expect(selectWindow(14, 13, 8), (7, 14));
+      // In the middle both, so budget-2 items.
+      final (s, e) = selectWindow(30, 15, 8);
+      expect(e - s, 6);
+      expect(s <= 15 && 15 < e, isTrue);
+    });
+
+    test('rendered list never exceeds its row budget and keeps the cursor', () {
+      for (final total in [5, 8, 9, 14, 40]) {
+        for (final budget in [3, 4, 7, 8, 20]) {
+          final m = SelectModel(
+              [for (var i = 0; i < total; i++) SelectItem('item $i')]);
+          for (var step = 0; step < total; step++) {
+            final lines = renderSelect('T', m, maxRows: budget);
+            final list = lines.length - 2; // title and help
+            expect(list, lessThanOrEqualTo(budget < 3 ? 3 : budget));
+            expect(lines.any((l) => l.contains('> ')), isTrue,
+                reason: 'cursor visible: total $total budget $budget');
+            m.handle(const KeyPress(Key.down));
+          }
+        }
+      }
+    });
+
+    test('selectListRows uses the terminal height', () {
+      final m = SelectModel([for (var i = 0; i < 12; i++) SelectItem('x$i')]);
+      // title + help + cursor row are reserved.
+      expect(selectListRows(40, m), 37);
+      expect(selectListRows(24, m), 21);
+      expect(selectListRows(6, m), 3);
+      expect(selectListRows(2, m), 3);
+      m.handle(const KeyPress(Key.char, '/'));
+      expect(selectListRows(40, m), 36, reason: 'filter line reserved');
+    });
+
+    test('a 12 item menu fits a 24 row terminal without indicators', () {
+      final m = SelectModel([for (var i = 0; i < 12; i++) SelectItem('x$i')]);
+      final lines =
+          renderSelect('Main menu', m, maxRows: selectListRows(24, m));
+      expect(lines.any((l) => l.contains('more')), isFalse);
+      expect(lines.length, lessThan(24));
+    });
+  });
+
   test('renderSelect with a width never produces a line that could wrap', () {
     final m = SelectModel(
       [for (var i = 0; i < 6; i++) SelectItem('row $i', hint: 'h' * 100)],

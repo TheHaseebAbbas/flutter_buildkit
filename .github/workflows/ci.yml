@@ -1,9 +1,14 @@
 name: CI
 
+# Not run on every pull request push. Open PRs as drafts; CI runs once when a
+# PR is marked ready for review (before it merges), on main as a safety net,
+# and on demand from the Actions tab.
 on:
+  pull_request:
+    types: [ready_for_review]
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
