@@ -6,9 +6,12 @@
 /// Most people use the command line app:
 ///
 /// ```sh
-/// dart pub add --dev flutter_buildkit
-/// dart run flutter_buildkit
+/// dart pub global activate flutter_buildkit
+/// fbk            # inside a Flutter project
 /// ```
+///
+/// The menu (`App`) and its settings screens are not part of the library API.
+/// The commands that run without a menu are in [Cli].
 ///
 /// The same pieces are available as a library:
 ///
@@ -24,12 +27,12 @@
 ///   [Symbolicator] de-obfuscates crash traces.
 /// * **Editor and project setup**: [suggestConfig], [planLaunchJson] and
 ///   [mergeLaunchJson].
+/// * **Commands without a menu**: [Cli] and [ExitCodes].
 /// * **Terminal UI**: [Console], [SelectModel] and [renderTable].
 ///
 /// Runnable examples for each area are in the package's `example/` folder.
 library;
 
-export 'src/app.dart';
 export 'src/cli.dart';
 export 'src/build_paths.dart';
 export 'src/config.dart';
@@ -50,14 +53,11 @@ export 'src/ui/select_model.dart';
 export 'src/services/pre_build.dart';
 export 'src/services/symbolicator.dart';
 export 'src/ui/style.dart';
-export 'src/ui/windows_console.dart';
 export 'src/config_editor.dart';
 export 'src/settings.dart';
-export 'src/ui/settings_screen.dart';
 export 'src/entry_points.dart';
 export 'src/auto_config.dart';
 export 'src/dart_entries.dart';
 export 'src/jsonc.dart';
 export 'src/launch_json.dart';
 export 'src/vscode.dart';
-export 'src/ui/launch_screen.dart';

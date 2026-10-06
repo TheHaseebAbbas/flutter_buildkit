@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:flutter_buildkit/flutter_buildkit.dart';
+import 'package:flutter_buildkit/src/app.dart';
+import 'package:flutter_buildkit/src/ui/windows_console.dart';
 import 'package:path/path.dart' as p;
 
 const _usage = '''

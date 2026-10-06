@@ -89,7 +89,12 @@ times) and typed (numbers, booleans, timestamps). JSON keeps all of that
 without loss and can be edited by hand. CSV and TSV flatten it to text, so they
 are export formats: **CSV** (RFC 4180, opens in Excel/Sheets) and **TSV**
 (tabs and newlines escaped as `\t` and `\n`). The ledger is rewritten
-atomically and the previous copy is kept as `ledger.json.bak`. Paths inside it
+atomically and the previous copy is kept as `ledger.json.bak`; the first save
+of each day also keeps the file as it was in `.history/ledger-<date>.json`
+(seven days). Every change takes a lock (`ledger.json.lock`) and re-reads the
+file first, so two terminals or a menu session plus a CI job do not overwrite
+each other; a lock older than two minutes is treated as left behind by a
+crash. Paths inside it
 are relative to the ledger folder, so the whole `app_builds/` folder can be moved.
 
 

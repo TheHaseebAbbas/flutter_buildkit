@@ -76,7 +76,7 @@ class ProcessRunner {
         runInShell: Platform.isWindows,
       );
 
-  /// Whether [executable] can be started at all.
+  /// Whether the command can be started at all.
   Future<bool> isAvailable(List<String> command) async {
     try {
       await run([...command, '--version']);
@@ -124,3 +124,35 @@ String describeCommand(List<String> command) => command
     .map((a) =>
         a.contains(RegExp(r'[\s"]')) ? '"${a.replaceAll('"', r'\"')}"' : a)
     .join(' ');
+
+/// Splits a command line into arguments on whitespace; text inside single or
+/// double quotes stays together and loses the quotes, so
+/// `"C:\Program Files\flutter\bin\flutter.bat" --verbose` is two
+/// arguments. Backslashes are ordinary characters (they are Windows path
+/// separators). An unclosed quote runs to the end.
+List<String> splitCommandLine(String text) {
+  final args = <String>[];
+  final current = StringBuffer();
+  var started = false;
+  String? quote;
+  for (final ch in text.split('')) {
+    if (quote != null) {
+      if (ch == quote) {
+        quote = null;
+      } else {
+        current.write(ch);
+      }
+    } else if (ch == '"' || ch == "'") {
+      quote = ch;
+      started = true;
+    } else if (RegExp(r'\s').hasMatch(ch)) {
+      if (started || current.isNotEmpty) args.add(current.toString());
+      current.clear();
+      started = false;
+    } else {
+      current.write(ch);
+    }
+  }
+  if (started || current.isNotEmpty) args.add(current.toString());
+  return args;
+}

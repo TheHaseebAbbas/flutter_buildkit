@@ -97,6 +97,9 @@ void addCommandOptions(ArgParser parser) {
         help: 'publish: draft, completed, inProgress or halted '
             '(default: the config).')
     ..addOption('fraction', help: 'publish: rollout fraction for inProgress.')
+    ..addFlag('replace-existing',
+        negatable: false,
+        help: 'publish: replace a staged or halted rollout on the track.')
     ..addFlag('mark-only',
         negatable: false,
         help: 'publish: only record in the ledger that it was uploaded.')
@@ -442,7 +445,8 @@ class Cli {
               track: track,
               releaseStatus: status,
               releaseNotes: notes,
-              userFraction: fraction);
+              userFraction: fraction,
+              replaceExisting: a['replace-existing'] as bool);
       _json
           ? _emit(updated.toJson())
           : out.writeln('${r.id}: uploaded to the $track track ($status)');
@@ -590,6 +594,12 @@ class Cli {
         ? current.code
         : (int.tryParse(a['build-number'] as String) ??
             (throw _Usage('--build-number needs a whole number.')));
+    final highest = ledger.highestVersionCode(project.appName);
+    if (highest != null && versionCode <= highest) {
+      err.writeln('Warning: version code $versionCode is not higher than '
+          '$highest, which the ledger already has for ${project.appName}. '
+          'Google Play rejects a version code it has seen.');
+    }
     final obfuscate =
         a.wasParsed('obfuscate') ? a['obfuscate'] as bool : config.obfuscate;
     final splitPerAbi = (a['split-per-abi'] as bool) || config.splitPerAbi;

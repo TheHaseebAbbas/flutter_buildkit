@@ -50,8 +50,9 @@ reloads the app. It detects:
 
 You tick what to apply, with the reason shown next to each value. Values you
 already set in an existing file are not ticked, so they are never overwritten
-by accident. It also offers to add the output folder and the config file to
-`.gitignore`. Secrets are never read into the file: the Sentry auth token
+by accident. It also offers to add the output folder and the personal overlay
+(`flutter_buildkit.local.yaml`) to `.gitignore`; the main config is meant to
+be committed. Secrets are never read into the file: the Sentry auth token
 stays out, and for Play only the key's path is used.
 
 ### Entry points can be anywhere

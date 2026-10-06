@@ -48,7 +48,9 @@ dart run flutter_buildkit init   # optional: write a commented flutter_buildkit.
 dart run flutter_buildkit        # open the menu
 ```
 
-Add `app_builds/` and `flutter_buildkit.yaml` to the project's `.gitignore`.
+Commit `flutter_buildkit.yaml` so the team shares it. Add `app_builds/` and the
+personal overlay `flutter_buildkit.local.yaml` (secrets, machine paths) to the
+project's `.gitignore`.
 Installed globally (`dart pub global activate flutter_buildkit`) it is on your
 `PATH` as `flutter_buildkit` and the short `fbk`. Globally installed is the
 better choice for CI: it keeps `googleapis` out of your app's dependency
@@ -202,6 +204,13 @@ trace, even for released builds whose files were deleted:
 
 ## Use it as a library
 
+The services behind the menu are public: building, the ledger, delete rules,
+Google Play upload, symbol upload, crash tracing, exports and `Cli` (the
+non-interactive commands). The menu itself (`App`, the settings editor and
+launch.json screens, `WindowsConsole`) is internal since 0.2.0 and may change
+without notice. The package is below 1.0: a minor version can break the API,
+and the [changelog](CHANGELOG.md) says what changed.
+
 ```dart
 import 'package:flutter_buildkit/flutter_buildkit.dart';
 
@@ -259,6 +268,7 @@ runner. Full steps, a run-everything script and troubleshooting are in the
 
 - [Configuration](doc/configuration.md): every key, environment variables, Google Play, symbols
 - [Project setup](doc/project-setup.md): entry points, auto-configuration, VS Code, settings editor
+- [Security notes](doc/security.md): config trust, secrets, what is sent where
 - [Using it in CI](doc/ci.md): commands for scripts, exit codes, GitHub Actions
 - [Builds, folders and the ledger](doc/builds-and-ledger.md): layouts, status, delete rules, crash tracing
 - [API reference](https://pub.dev/documentation/flutter_buildkit/latest/)

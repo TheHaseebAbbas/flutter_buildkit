@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_buildkit/flutter_buildkit.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -136,6 +137,46 @@ android {
       final text = c.describe();
       expect(text, matches(RegExp(r'sentry\.auth_token\s+set \(19 chars\)')));
       expect(text, isNot(contains('sntr')));
+    });
+
+    test('splitCommandLine keeps quoted paths together', () {
+      expect(splitCommandLine('fvm flutter'), ['fvm', 'flutter']);
+      expect(splitCommandLine(r'"C:\Program Files\flutter\bin\flutter.bat" -v'),
+          [r'C:\Program Files\flutter\bin\flutter.bat', '-v']);
+      expect(splitCommandLine("'~/My Tools/flutter'  x"),
+          ['~/My Tools/flutter', 'x']);
+      expect(splitCommandLine('  '), isEmpty);
+      expect(splitCommandLine('a "" b'), ['a', '', 'b']);
+    });
+
+    test('a quoted flutter command with spaces survives the config', () {
+      final c = AppConfig.fromYaml(
+          '/p', {'flutter': '"/opt/My Tools/flutter" --suppress-analytics'});
+      expect(c.flutter, ['/opt/My Tools/flutter', '--suppress-analytics']);
+    });
+
+    test('the local overlay wins over the shared file, key by key', () {
+      final dir = Directory.systemTemp.createTempSync('fbk_overlay_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      File(p.join(dir.path, 'flutter_buildkit.yaml')).writeAsStringSync('''
+output_dir: shared_out
+play:
+  default_track: beta
+  default_release_status: draft
+''');
+      File(p.join(dir.path, 'flutter_buildkit.local.yaml'))
+          .writeAsStringSync('''
+play:
+  default_track: internal
+  service_account_json: /secret/key.json
+''');
+      final c = AppConfig.load(dir.path, env: const {});
+      expect(c.play.defaultTrack, 'internal');
+      expect(c.play.defaultReleaseStatus, 'draft');
+      expect(c.play.serviceAccountJson, '/secret/key.json');
+      expect(c.outputRoot, endsWith('shared_out'));
+      expect(c.localConfigFile, endsWith('flutter_buildkit.local.yaml'));
+      expect(c.describe(), contains('local overlay'));
     });
 
     test('the init template is valid config', () {

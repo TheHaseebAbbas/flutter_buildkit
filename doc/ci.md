@@ -7,7 +7,7 @@ text (or JSON with `--json`) and returns a stable exit code. Global options
 | Command | Does |
 |---|---|
 | `build --flavor dev,prod --type aab --mode release` | Builds every combination, one ledger row each. `--version-name`, `--build-number`, `--entry`, `--[no-]obfuscate`, `--split-per-abi`, `--arg`, `--skip-pre-build`, `--notes`. Defaults: type `apk`, mode `release`, version from `pubspec.yaml`. With flavors in the project, `--flavor` is required (`none` for no flavor). |
-| `publish <id\|latest> --track internal` | Uploads the AAB through the Play API. `--release-status` (default from the config, `draft`), `--fraction`, `--notes`, `--notes-file`. `--mark-only` just records the upload. The `production` track needs `--yes`. |
+| `publish <id\|latest> --track internal` | Uploads the AAB through the Play API. `--release-status` (default from the config, `draft`), `--fraction`, `--notes`, `--notes-file`. The track is read first; a staged or halted rollout on it is not dropped unless you pass `--replace-existing`. `--mark-only` just records the upload. The `production` track needs `--yes`. |
 | `mark <id...> [--clear]` | Marks builds as published in the ledger (or clears the mark). |
 | `symbols <id\|latest> --to crashlytics,sentry` | Uploads debug symbols. Defaults to the tools enabled in the config. |
 | `trace <id\|latest> --file crash.txt` | De-obfuscates a stack trace (stdin when no file). `--kind`, `--save`. |

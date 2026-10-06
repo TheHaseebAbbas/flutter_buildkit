@@ -28,6 +28,8 @@ BuildRecord record(String id,
     );
 
 void main() {
+  ledgerLockTests();
+  ledgerFixtureTests();
   late Directory tmp;
   late Ledger ledger;
 
@@ -408,5 +410,129 @@ void main() {
       expect(outside.existsSync(), isTrue);
       expect(ledger.records, hasLength(1));
     });
+  });
+}
+
+void ledgerLockTests() {
+  late Directory tmp;
+  late String path;
+
+  setUp(() {
+    tmp = Directory.systemTemp.createTempSync('fbk_lock_');
+    path = p.join(tmp.path, 'out', 'ledger.json');
+  });
+  tearDown(() => tmp.deleteSync(recursive: true));
+
+  group('Ledger with several writers', () {
+    test('a second instance does not overwrite the first one\'s rows',
+        () async {
+      final a = await Ledger.open(path);
+      final b = await Ledger.open(path);
+      await a.add(record('a'));
+      await b.add(record('b')); // b never saw "a" in memory
+
+      final reopened = await Ledger.open(path);
+      expect(reopened.records.map((r) => r.id).toSet(), {'a', 'b'});
+      expect(b.records, hasLength(2));
+    });
+
+    test('update works on the row as it is on disk', () async {
+      final a = await Ledger.open(path);
+      final b = await Ledger.open(path);
+      await a.add(record('a'));
+      await a.update(
+          'a', (r) => r.copyWith(publishedAt: DateTime.utc(2026, 10, 2)));
+      final updated = await b.update('a', (r) => r.copyWith(notes: 'n'));
+      expect(updated.isPublished, isTrue);
+      expect(updated.notes, 'n');
+    });
+
+    test('many concurrent adds all land', () async {
+      final ledgers = [for (var i = 0; i < 4; i++) await Ledger.open(path)];
+      await Future.wait([
+        for (var i = 0; i < 20; i++) ledgers[i % 4].add(record('b$i')),
+      ]);
+      expect((await Ledger.open(path)).records, hasLength(20));
+    });
+
+    test('a held lock gives a clear error; a stale one is replaced', () async {
+      final a = Ledger(File(path), lockWait: const Duration(milliseconds: 200));
+      await a.reload();
+      await a.add(record('a'));
+      final lock = File('$path.lock')..writeAsStringSync('pid 1\n');
+      await expectLater(
+          a.add(record('b')),
+          throwsA(isA<LedgerException>()
+              .having((e) => e.message, 'message', contains('pid 1'))));
+      expect(lock.existsSync(), isTrue, reason: 'not ours to delete');
+
+      lock.setLastModifiedSync(DateTime.now()
+          .subtract(Ledger.lockStale + const Duration(minutes: 1)));
+      await a.add(record('c'));
+      expect(lock.existsSync(), isFalse);
+      expect((await Ledger.open(path)).records, hasLength(2));
+    });
+
+    test('a bad ledger file blocks a write instead of being replaced',
+        () async {
+      final a = await Ledger.open(path);
+      await a.add(record('a'));
+      File(path).writeAsStringSync('{ not json');
+      await expectLater(a.add(record('b')), throwsA(isA<LedgerException>()));
+      expect(File(path).readAsStringSync(), '{ not json');
+    });
+
+    test('the first save of a day keeps a snapshot; only 7 days are kept',
+        () async {
+      final a = await Ledger.open(path);
+      await a.add(record('a'));
+      final history = Directory(p.join(p.dirname(path), '.history'));
+      expect(history.existsSync(), isFalse, reason: 'nothing to keep yet');
+      await a.add(record('b'));
+      final files = history.listSync().map((f) => p.basename(f.path)).toList();
+      expect(files, hasLength(1));
+      expect(files.single, matches(RegExp(r'^ledger-\d{8}\.json$')));
+      // The snapshot is the ledger as it was before today's first change.
+      final snap = jsonDecode(
+          File(p.join(history.path, files.single)).readAsStringSync()) as Map;
+      expect((snap['builds'] as List), hasLength(1));
+
+      for (var d = 1; d <= 9; d++) {
+        File(p.join(history.path, 'ledger-2020010$d.json'))
+            .writeAsStringSync('{}');
+      }
+      File(p.join(history.path, 'ledger-20200110.json'))
+          .writeAsStringSync('{}');
+      await a.add(record('c')); // same day: no new snapshot, no pruning
+      expect(history.listSync().length, 11);
+      File(p.join(history.path, files.single)).deleteSync();
+      await a.add(record('d')); // new snapshot triggers pruning
+      expect(history.listSync().length, Ledger.historyDays);
+    });
+  });
+}
+
+void ledgerFixtureTests() {
+  test('a ledger written by 0.1.2 still loads, saves and exports', () async {
+    final tmp = Directory.systemTemp.createTempSync('fbk_fixture_');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final path = p.join(tmp.path, 'ledger.json');
+    File('test/fixtures/ledger_0_1_2.json').copySync(path);
+
+    final ledger = await Ledger.open(path);
+
+    expect(ledger.records, hasLength(2));
+    final published = ledger.byId('20261001-071230-a1b2')!;
+    expect(published.status, BuildStatus.published);
+    expect(published.play!.editId, 'e1');
+    expect(published.isFailed, isFalse);
+    expect(published.command, isNull);
+    final old = ledger.byId('20260920-100000-0000')!;
+    expect(old.artifacts, isEmpty);
+    expect(old.events.single.kind, 'built');
+
+    await ledger.update(old.id, (r) => r.copyWith(notes: 'n'));
+    expect((await Ledger.open(path)).records, hasLength(2));
+    expect(const LedgerExporter().toCsv(ledger.records), contains('a1b2'));
   });
 }

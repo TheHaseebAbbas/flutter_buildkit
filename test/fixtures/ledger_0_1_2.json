@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-03T08:00:00.000Z",
+  "builds": [
+    {
+      "id": "20261001-071230-a1b2",
+      "appName": "my_app",
+      "packageName": "com.example.app",
+      "flavor": "dev",
+      "mode": "release",
+      "type": "aab",
+      "versionName": "1.2.0",
+      "versionCode": 14,
+      "createdAt": "2026-10-01T07:12:30.000Z",
+      "outputDir": "dev/release/1.2.0-b14-20261001-071230",
+      "artifacts": [
+        {
+          "path": "dev/release/1.2.0-b14-20261001-071230/artifacts/my_app.aab",
+          "sizeBytes": 1234,
+          "sha256": "abc"
+        }
+      ],
+      "symbolsDir": "dev/release/1.2.0-b14-20261001-071230/symbols",
+      "mappingFile": "dev/release/1.2.0-b14-20261001-071230/symbols/mapping/mapping.txt",
+      "obfuscated": true,
+      "gitCommit": "deadbeef",
+      "gitBranch": "main",
+      "flutterVersion": "3.99.0",
+      "durationMs": 61000,
+      "status": {
+        "current": "published",
+        "label": "published (Play internal, completed)",
+        "condition": "ready",
+        "symbolsStatus": "uploaded to sentry",
+        "publishedAt": "2026-10-02T09:00:00.000Z",
+        "play": {
+          "track": "internal",
+          "uploadedAt": "2026-10-02T08:30:00.000Z",
+          "viaApi": true,
+          "releaseStatus": "completed",
+          "editId": "e1"
+        },
+        "symbols": {"sentry": "2026-10-02T10:00:00.000Z"}
+      },
+      "preBuild": ["flutter pub get"],
+      "history": [
+        {"at": "2026-10-01T07:12:30.000Z", "event": "built"},
+        {"at": "2026-10-02T08:30:00.000Z", "event": "uploaded", "note": "internal, completed"},
+        {"at": "2026-10-02T09:00:00.000Z", "event": "published"},
+        {"at": "2026-10-02T10:00:00.000Z", "event": "symbols_uploaded", "note": "sentry"}
+      ]
+    },
+    {
+      "id": "20260920-100000-0000",
+      "appName": "my_app",
+      "flavor": null,
+      "mode": "debug",
+      "type": "apk",
+      "versionName": "1.0.0",
+      "versionCode": 1,
+      "createdAt": "2026-09-20T10:00:00.000Z",
+      "outputDir": "release/1.0.0-b1",
+      "obfuscated": false
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_buildkit/flutter_buildkit.dart';
+import 'package:flutter_buildkit/src/ui/settings_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 

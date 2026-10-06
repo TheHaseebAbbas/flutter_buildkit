@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 import 'build_paths.dart';
+import 'services/process_runner.dart';
 
 /// Per-flavor settings. Every field is optional.
 class FlavorConfig {
@@ -156,6 +157,7 @@ class AppConfig {
   const AppConfig({
     required this.projectDir,
     this.configFile,
+    this.localConfigFile,
     this.outputDir = 'app_builds',
     this.outputLayout,
     this.fileName,
@@ -182,6 +184,10 @@ class AppConfig {
 
   /// The file this config was read from, or null when defaults are used.
   final String? configFile;
+
+  /// The personal overlay (`flutter_buildkit.local.yaml`) merged over
+  /// [configFile], or null when there is none.
+  final String? localConfigFile;
 
   /// Root of the build folder tree, relative to [projectDir] unless absolute.
   final String outputDir;
@@ -295,7 +301,29 @@ class AppConfig {
       }
       y = (doc as Map?) ?? const {};
     }
-    return fromYaml(projectDir, y, env: env, configFile: path);
+    // A personal overlay next to the config (`flutter_buildkit.local.yaml`)
+    // wins over it: commit the shared file, keep secrets and machine paths
+    // in the overlay and out of git.
+    String? local;
+    final base = path ?? p.join(projectDir, fileNames.first);
+    for (final candidate in [
+      '${p.withoutExtension(base)}.local${p.extension(base)}',
+      if (path == null) p.join(projectDir, 'flutter_buildkit.local.yml'),
+    ]) {
+      if (File(candidate).existsSync()) {
+        local = candidate;
+        break;
+      }
+    }
+    if (local != null) {
+      final doc = loadYaml(File(local).readAsStringSync());
+      if (doc != null && doc is! Map) {
+        throw ConfigException('$local must contain a YAML map.');
+      }
+      y = _merge(y, (doc as Map?) ?? const {});
+    }
+    return fromYaml(projectDir, y,
+        env: env, configFile: path, localConfigFile: local);
   }
 
   /// Builds a config from the parsed YAML map [y].
@@ -303,7 +331,9 @@ class AppConfig {
   /// [env] overrides some keys and supplies secrets; [configFile] is only
   /// recorded. Throws [ConfigException] for invalid values.
   static AppConfig fromYaml(String projectDir, Map<Object?, Object?> y,
-      {Map<String, String> env = const {}, String? configFile}) {
+      {Map<String, String> env = const {},
+      String? configFile,
+      String? localConfigFile}) {
     final playY = _map(y['play']);
     final crashY = _map(y['crashlytics']);
     final sentryY = _map(y['sentry']);
@@ -323,6 +353,7 @@ class AppConfig {
     return AppConfig(
       projectDir: projectDir,
       configFile: configFile,
+      localConfigFile: localConfigFile,
       outputDir: y['output_dir'] as String? ?? 'app_builds',
       outputLayout: _layout(y['output_layout']),
       fileName: _fileName(y['file_name']),
@@ -414,12 +445,27 @@ class AppConfig {
     return out;
   }
 
+  /// [overlay] merged over [base]: maps are merged key by key, everything
+  /// else (including lists) is replaced.
+  static Map<Object?, Object?> _merge(
+      Map<Object?, Object?> base, Map<Object?, Object?> overlay) {
+    final result = Map<Object?, Object?>.of(base);
+    for (final e in overlay.entries) {
+      final old = result[e.key];
+      result[e.key] = old is Map && e.value is Map
+          ? _merge(old.cast<Object?, Object?>(),
+              (e.value as Map).cast<Object?, Object?>())
+          : e.value;
+    }
+    return result;
+  }
+
   static Map<Object?, Object?> _map(Object? v) =>
       v is Map ? v.cast<Object?, Object?>() : const {};
 
   static List<String> _command(Object? v, List<String> fallback) {
     if (v is String && v.trim().isNotEmpty) {
-      return v.trim().split(RegExp(r'\s+'));
+      return splitCommandLine(v.trim());
     }
     if (v is List && v.isNotEmpty) return [for (final s in v) '$s'];
     return fallback;
@@ -432,6 +478,7 @@ class AppConfig {
     String list(List<String> v) => v.isEmpty ? '[]' : v.join(' ');
     final lines = <String, String>{
       'config file': configFile ?? '(none; defaults)',
+      if (localConfigFile != null) 'local overlay': localConfigFile!,
       'project': projectDir,
       'output_dir': outputRoot,
       'output_layout': effectiveLayout,
@@ -485,8 +532,10 @@ class AppConfig {
 
   /// Commented starter config written for new projects.
   static const template = '''
-# flutter_buildkit config. Keep this file out of git if it holds secrets;
-# prefer the environment variables noted below for credentials.
+# flutter_buildkit config. Commit this file so the team shares flavors and
+# layout. Put secrets and machine paths in flutter_buildkit.local.yaml (same
+# keys, wins over this file) and keep that one out of git. Prefer
+# the environment variables noted below for credentials.
 
 # Where builds and the ledger are stored (relative to the Flutter project).
 output_dir: app_builds
@@ -516,7 +565,8 @@ file_name: "{app}-{flavor}-{mode}-{version}-{datetime}"
 #   admin: lib/main_admin.dart
 #   kiosk: lib/main_{flavor}_kiosk.dart
 
-# Command used to run Flutter ("fvm flutter" works too). Env: FBK_FLUTTER
+# Command used to run Flutter ("fvm flutter" works too; quote a path with
+# spaces: '"C:\\Program Files\\flutter\\bin\\flutter.bat"'). Env: FBK_FLUTTER
 flutter: flutter
 
 # Obfuscate release/profile builds and keep Dart symbols for crash tools.
