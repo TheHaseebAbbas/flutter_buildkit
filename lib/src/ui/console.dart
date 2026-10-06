@@ -419,13 +419,15 @@ class Console {
   }) async {
     final model =
         SelectModel(items, multi: multi, initial: initial, ticked: ticked);
-    final maxRows = (_rows - 8).clamp(4, 20);
     var drawn = 0;
 
     void draw() {
       if (drawn > 0) _write('\x1b[${drawn}A');
+      // Measured on every redraw so a resized window is picked up at once.
       final lines = renderSelect(title, model,
-          maxRows: maxRows, style: style, width: _columns - 1);
+          maxRows: selectListRows(_rows, model),
+          style: style,
+          width: _columns - 1);
       _write('\x1b[J${lines.join('\n')}\n');
       drawn = lines.length;
     }

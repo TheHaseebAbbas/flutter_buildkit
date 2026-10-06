@@ -1,3 +1,11 @@
+## Unreleased
+
+- Menus now use the terminal's height. The visible list was capped at 20 rows,
+  reserved 8 rows for the rest, and was measured once when the menu opened.
+  It is now measured on every redraw (so resizing works), reserves only the
+  rows actually drawn, and shows "more above/below" only when items are
+  really hidden. The indicator lines count toward the row budget.
+
 ## 0.2.1 - 2026-10-06
 
 - Menus no longer repeat their heading on every arrow key: list lines are cut

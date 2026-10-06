@@ -302,8 +302,42 @@ class SelectModel {
   }
 }
 
-/// Renders [model] as lines of text. [maxRows] limits how many items show
-/// at once; the list scrolls to keep the cursor in view. With a [width], every
+/// The rows a list may use for its items and its "more above/below" lines,
+/// given a terminal of [terminalRows]. Everything else [renderSelect] draws
+/// (title, help, and the filter, number and error lines when shown) is
+/// subtracted, plus one row for the cursor line under the menu, so the menu
+/// never grows taller than the screen. Never less than 3.
+int selectListRows(int terminalRows, SelectModel m) {
+  final chrome = 2 +
+      (m.filtering || m.filter.isNotEmpty ? 1 : 0) +
+      (m.entry.isNotEmpty ? 1 : 0) +
+      (m.error != null ? 1 : 0) +
+      1;
+  return (terminalRows - chrome).clamp(3, 1 << 30);
+}
+
+/// Picks which items of a list of [total] to show in [budget] rows, keeping
+/// [cursor] in view. Returns `(start, end)`. The "more above/below" lines
+/// take part of the budget, but only when items are really hidden: a list
+/// that fits shows every item and no indicator.
+(int, int) selectWindow(int total, int cursor, int budget) {
+  budget = budget < 3 ? 3 : budget;
+  if (total <= budget) return (0, total);
+  cursor = cursor.clamp(0, total - 1);
+  var size = budget - 2;
+  var start = (cursor - size ~/ 2).clamp(0, total - size);
+  if (start == 0) {
+    size = budget - 1;
+  } else if (start + size >= total) {
+    size = budget - 1;
+    start = total - size;
+  }
+  return (start, start + size);
+}
+
+/// Renders [model] as lines of text. [maxRows] is how many rows the list may
+/// take, indicator lines included; the list scrolls to keep the cursor in
+/// view. With a [width], every
 /// line is cut to fit so none wraps onto a second terminal row.
 List<String> renderSelect(
   String title,
@@ -362,11 +396,7 @@ List<String> _renderSelectLines(
     lines.add(style.dim('  (nothing matches)'));
   } else {
     final cursorPos = v.indexOf(m.cursor).clamp(0, v.length - 1);
-    var start = 0;
-    if (v.length > maxRows) {
-      start = (cursorPos - maxRows ~/ 2).clamp(0, v.length - maxRows);
-    }
-    final end = (start + maxRows).clamp(0, v.length);
+    final (start, end) = selectWindow(v.length, cursorPos, maxRows);
     if (start > 0) lines.add(style.dim('    ... $start more above'));
     for (var p = start; p < end; p++) {
       final i = v[p];
