@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter_buildkit/flutter_buildkit.dart';
+import 'package:flutter_buildkit/src/ui/windows_console.dart';
 import 'package:test/test.dart';
 
 List<int> b(String s) => s.codeUnits;

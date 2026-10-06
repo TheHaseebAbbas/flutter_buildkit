@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -27,7 +28,7 @@ class LedgerException implements Exception {
 /// version is kept as `<ledger>.bak`.
 class Ledger {
   /// Creates a ledger backed by [file]; call [reload] to read existing rows.
-  Ledger(this.file);
+  Ledger(this.file, {this.lockWait = const Duration(seconds: 10)});
 
   /// Version of the JSON layout written by [save]; newer files are rejected.
   static const schemaVersion = 1;
@@ -110,34 +111,112 @@ class Ledger {
   /// Appends [record] and saves.
   ///
   /// Throws [LedgerException] if a record with the same id already exists.
-  Future<void> add(BuildRecord record) async {
-    if (byId(record.id) != null) {
-      throw LedgerException('A build with id ${record.id} already exists.');
-    }
-    _records.add(record);
-    await save();
-  }
+  Future<void> add(BuildRecord record) => _mutate(() {
+        if (byId(record.id) != null) {
+          throw LedgerException('A build with id ${record.id} already exists.');
+        }
+        _records.add(record);
+        return true;
+      });
 
   /// Replaces the record with [id] by the result of [change] and saves.
   ///
   /// Returns the new record. Throws [LedgerException] if [id] is unknown.
   Future<BuildRecord> update(
       String id, BuildRecord Function(BuildRecord) change) async {
-    final index = _records.indexWhere((r) => r.id == id);
-    if (index < 0) throw LedgerException('No build with id $id.');
-    final updated = change(_records[index]);
-    _records[index] = updated;
-    await save();
+    late BuildRecord updated;
+    await _mutate(() {
+      final index = _records.indexWhere((r) => r.id == id);
+      if (index < 0) throw LedgerException('No build with id $id.');
+      updated = change(_records[index]);
+      _records[index] = updated;
+      return true;
+    });
     return updated;
   }
 
   /// Removes the rows with [ids]; returns the removed records.
   Future<List<BuildRecord>> remove(Iterable<String> ids) async {
     final set = ids.toSet();
-    final removed = _records.where((r) => set.contains(r.id)).toList();
-    _records.removeWhere((r) => set.contains(r.id));
-    if (removed.isNotEmpty) await save();
+    var removed = <BuildRecord>[];
+    await _mutate(() {
+      removed = _records.where((r) => set.contains(r.id)).toList();
+      _records.removeWhere((r) => set.contains(r.id));
+      return removed.isNotEmpty;
+    });
     return removed;
+  }
+
+  /// Highest version code recorded for [appName] (failed builds ignored), or
+  /// null when there is none. Used to warn before building a lower number.
+  int? highestVersionCode(String appName) {
+    int? best;
+    for (final r in _records) {
+      if (r.appName != appName || r.isFailed) continue;
+      if (best == null || r.versionCode > best) best = r.versionCode;
+    }
+    return best;
+  }
+
+  /// Runs one read-modify-write cycle under the lock file.
+  ///
+  /// The ledger is re-read from disk first, so a change made by another
+  /// process (a menu session and a CI job, two terminals) is not overwritten.
+  /// [change] returns false when nothing changed, to skip saving.
+  Future<void> _mutate(FutureOr<bool> Function() change) async {
+    await file.parent.create(recursive: true);
+    final lock = await _acquireLock();
+    try {
+      await reload();
+      if (!await change()) return;
+      await save();
+    } finally {
+      if (await lock.exists()) await lock.delete();
+    }
+  }
+
+  /// How long a change waits for another process to release the lock.
+  final Duration lockWait;
+
+  /// A lock file older than this counts as left behind by a crashed process,
+  /// and is ignored and replaced.
+  static const lockStale = Duration(minutes: 2);
+
+  Future<File> _acquireLock() async {
+    final lock = File('${file.path}.lock');
+    final deadline = DateTime.now().add(lockWait);
+    while (true) {
+      try {
+        await lock.create(exclusive: true);
+        await lock.writeAsString(
+            'pid $pid\n${DateTime.now().toUtc().toIso8601String()}\n');
+        return lock;
+      } on FileSystemException {
+        // Someone holds the lock, unless it is a leftover.
+        try {
+          final age = DateTime.now().difference(await lock.lastModified());
+          if (age > lockStale) {
+            await lock.delete();
+            continue;
+          }
+        } on FileSystemException {
+          continue; // released between the two calls
+        }
+        if (DateTime.now().isAfter(deadline)) {
+          var holder = '';
+          try {
+            holder =
+                ' (${(await lock.readAsString()).trim().split('\n').first})';
+          } on FileSystemException {
+            // Gone already.
+          }
+          throw LedgerException('The ledger is in use by another process'
+              '$holder. Try again, or delete ${lock.path} if no other '
+              'flutter_buildkit is running.');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
   }
 
   /// The ledger as pretty printed JSON text, with a trailing update time.
@@ -147,14 +226,41 @@ class Ledger {
         'builds': [for (final r in records) r.toJson()],
       });
 
-  /// Writes the ledger to [file] atomically, keeping the old copy as `.bak`.
+  /// How many daily snapshots under `.history/` are kept.
+  static const historyDays = 7;
+
+  /// Writes the ledger to [file] atomically.
+  ///
+  /// The previous version is kept as `<ledger>.bak`. The first save of each
+  /// day also copies the file as it was to `.history/ledger-<date>.json`
+  /// (the last [historyDays] are kept), so one bad save or hand edit cannot
+  /// replace the only good copy.
   Future<void> save() async {
     await file.parent.create(recursive: true);
     final tmp = File('${file.path}.tmp');
     await tmp.writeAsString('${encode()}\n', flush: true);
     if (await file.exists()) {
+      await _snapshot();
       await file.copy('${file.path}.bak');
     }
     await tmp.rename(file.path);
+  }
+
+  Future<void> _snapshot() async {
+    final dir = Directory(p.join(rootDir, '.history'));
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final day = '${now.year}${two(now.month)}${two(now.day)}';
+    final today = File(p.join(dir.path, 'ledger-$day.json'));
+    if (await today.exists()) return;
+    await dir.create(recursive: true);
+    await file.copy(today.path);
+    final old = [
+      for (final f in await dir.list().toList())
+        if (f is File && RegExp(r'ledger-\d{8}\.json$').hasMatch(f.path)) f,
+    ]..sort((a, b) => b.path.compareTo(a.path));
+    for (final f in old.skip(historyDays)) {
+      await f.delete();
+    }
   }
 }

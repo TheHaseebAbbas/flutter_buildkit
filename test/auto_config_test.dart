@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_buildkit/flutter_buildkit.dart';
+import 'package:flutter_buildkit/src/ui/settings_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -170,8 +171,13 @@ android {
     expect(c.flavor('dev').target, 'lib/main_dev.dart');
     expect(c.preBuild.buildRunner, isTrue);
     expect(out.toString(), contains('Detected settings'));
-    expect(File(p.join(tmp.path, '.gitignore')).readAsStringSync(),
-        allOf(contains('app_builds/'), contains('flutter_buildkit.yaml')));
+    expect(
+        File(p.join(tmp.path, '.gitignore')).readAsStringSync(),
+        allOf(
+            contains('app_builds/'),
+            contains('flutter_buildkit.local.yaml'),
+            isNot(matches(
+                RegExp(r'^flutter_buildkit\.yaml$', multiLine: true)))));
   });
 
   test('an existing value is not overwritten unless ticked', () async {

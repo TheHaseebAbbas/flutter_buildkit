@@ -52,6 +52,31 @@ Command line and CI:
 - GitHub Actions workflow: format, analyze and tests on Linux, macOS and
   Windows, plus a `pub publish --dry-run`.
 
+Ledger, Google Play and library:
+
+- The ledger takes a lock file around every change and re-reads the file
+  first, so two processes no longer overwrite each other's rows. A bad ledger
+  file blocks a write instead of being replaced. The first save of each day
+  keeps a copy in `.history/` (seven days) next to the existing `.bak`.
+  `Ledger` gained `lockWait` and `highestVersionCode`.
+- Google Play: the track is read before it is changed. A staged or halted
+  rollout is no longer dropped silently: the upload throws
+  `PlayTrackInUseException` unless `replaceExisting` (`--replace-existing`)
+  is set; the menu asks. `PlayPublisher` takes an `httpClient`, which is also
+  what makes it testable with `package:http/testing.dart` (new direct
+  dependency `http`).
+- **Changed:** the library no longer exports the menu (`App`), the settings and
+  launch.json screens, or `WindowsConsole`. `Cli` and `ExitCodes` are public.
+- Config: `flutter_buildkit.local.yaml` is merged over the shared config.
+  The shared file is now meant to be committed; auto-configuration offers to
+  ignore the local overlay instead of the main file. The `flutter` command
+  and string settings split on whitespace but honor quotes, so paths with
+  spaces work (`splitCommandLine`).
+- A warning is shown when the version code is not higher than one already in
+  the ledger for the app (menu and `build`).
+- Docs: README (install globally, `dart run flutter_buildkit:fbk`), new
+  `doc/ci.md` and `doc/security.md`, config overlay and ledger lock.
+
 ## 0.1.2
 
 - Added an `example/` folder with runnable examples by topic (library API,

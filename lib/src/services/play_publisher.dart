@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:googleapis/androidpublisher/v3.dart' as ap;
 import 'package:googleapis_auth/auth_io.dart';
+import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../ledger/ledger.dart';
@@ -19,6 +20,23 @@ class PlayException implements Exception {
   String toString() => message;
 }
 
+/// Thrown when the track already carries a staged or halted rollout that an
+/// upload would drop. Upload again with `replaceExisting` to go ahead.
+class PlayTrackInUseException extends PlayException {
+  /// Creates the exception for [track] and the [releases] in the way.
+  PlayTrackInUseException(this.track, this.releases)
+      : super(
+            'The $track track has an unfinished release (${releases.join('; ')}'
+            '). Uploading would replace it. Finish or halt it in Play '
+            'Console, or upload with replaceExisting (--replace-existing).');
+
+  /// The track that is in use.
+  final String track;
+
+  /// Short descriptions of the releases that would be dropped.
+  final List<String> releases;
+}
+
 /// Uploads an AAB to Google Play through the Android Publisher API.
 ///
 /// The service account key is read from `play.service_account_json` or the
@@ -27,9 +45,19 @@ class PlayException implements Exception {
 /// very first upload of a new app through the Play Console.
 class PlayPublisher {
   /// Creates a publisher using [config] and [ledger]; [log] receives progress lines.
-  PlayPublisher(
-      {required this.config, required this.ledger, void Function(String)? log})
-      : log = log ?? ((_) {});
+  ///
+  /// By default the service account key is used. Pass [httpClient] to use
+  /// your own authenticated client instead (other credential types, tests);
+  /// it is not closed by the publisher.
+  PlayPublisher({
+    required this.config,
+    required this.ledger,
+    void Function(String)? log,
+    this.httpClient,
+  }) : log = log ?? ((_) {});
+
+  /// Authenticated client used instead of the service account, or null.
+  final http.Client? httpClient;
 
   /// Configuration holding the `play` settings and service account key path.
   final AppConfig config;
@@ -41,12 +69,18 @@ class PlayPublisher {
   final void Function(String) log;
 
   /// Uploads the build's AAB to [track] and records it in the ledger.
+  ///
+  /// The track is read first. A staged or halted rollout on it would be
+  /// dropped by the update, so that throws [PlayTrackInUseException] unless
+  /// [replaceExisting] is true. Other existing releases (completed, draft)
+  /// are replaced and mentioned in the log.
   Future<BuildRecord> publish(
     BuildRecord record, {
     String? track,
     String? releaseStatus,
     String? releaseNotes,
     double? userFraction,
+    bool replaceExisting = false,
   }) async {
     if (record.type != ArtifactType.aab) {
       throw PlayException('Only AAB builds can be uploaded to Google Play '
@@ -60,7 +94,7 @@ class PlayPublisher {
           'is ${record.mode.name}. Build with --release.');
     }
     final keyPath = config.play.serviceAccountJson;
-    if (keyPath == null) {
+    if (keyPath == null && httpClient == null) {
       throw PlayException('No Play credentials. Set play.service_account_json '
           'in the config or PLAY_SERVICE_ACCOUNT_JSON in your environment. '
           'You can still mark the build as uploaded without the API.');
@@ -75,8 +109,8 @@ class PlayPublisher {
     if (!aab.existsSync()) {
       throw PlayException('${aab.path} no longer exists.');
     }
-    final key = File(keyPath);
-    if (!key.existsSync()) {
+    final key = keyPath == null ? null : File(keyPath);
+    if (key != null && httpClient == null && !key.existsSync()) {
       throw PlayException('Service account key not found: $keyPath');
     }
 
@@ -86,15 +120,29 @@ class PlayPublisher {
       throw PlayException('Staged rollouts need a user fraction, e.g. 0.1.');
     }
 
-    final credentials =
-        ServiceAccountCredentials.fromJson(key.readAsStringSync());
-    final client = await clientViaServiceAccount(
-        credentials, [ap.AndroidPublisherApi.androidpublisherScope]);
+    final client = httpClient ??
+        await clientViaServiceAccount(
+            ServiceAccountCredentials.fromJson(key!.readAsStringSync()),
+            [ap.AndroidPublisherApi.androidpublisherScope]);
     try {
       final api = ap.AndroidPublisherApi(client);
       log('Opening an edit for $packageName...');
       final edit = await api.edits.insert(ap.AppEdit(), packageName);
       final editId = edit.id!;
+
+      final existing = await _existingReleases(api, packageName, editId, track);
+      final unfinished = [
+        for (final r in existing)
+          if (r.status == 'inProgress' || r.status == 'halted') _describe(r),
+      ];
+      if (unfinished.isNotEmpty && !replaceExisting) {
+        await _discardEdit(api, packageName, editId);
+        throw PlayTrackInUseException(track, unfinished);
+      }
+      for (final r in existing) {
+        log('The $track track currently has ${_describe(r)}; '
+            'this upload replaces it.');
+      }
 
       log('Uploading ${aab.path} (${aab.lengthSync()} bytes)...');
       final bundle = await api.edits.bundles.upload(
@@ -157,7 +205,34 @@ class PlayPublisher {
     } on ap.DetailedApiRequestError catch (e) {
       throw PlayException('Google Play API error ${e.status}: ${e.message}');
     } finally {
-      client.close();
+      if (httpClient == null) client.close();
+    }
+  }
+
+  Future<List<ap.TrackRelease>> _existingReleases(ap.AndroidPublisherApi api,
+      String packageName, String editId, String track) async {
+    try {
+      final current = await api.edits.tracks.get(packageName, editId, track);
+      return current.releases ?? const [];
+    } on ap.DetailedApiRequestError catch (e) {
+      if (e.status == 404) return const [];
+      rethrow;
+    }
+  }
+
+  static String _describe(ap.TrackRelease r) =>
+      '${r.status ?? 'unknown'} release ${r.name ?? ''} '
+              '(version codes ${(r.versionCodes ?? const []).join(', ')}'
+              '${r.userFraction == null ? '' : ', ${r.userFraction}'})'
+          .replaceAll('  ', ' ');
+
+  /// Best effort: an unused edit expires on its own.
+  Future<void> _discardEdit(
+      ap.AndroidPublisherApi api, String packageName, String editId) async {
+    try {
+      await api.edits.delete(packageName, editId);
+    } on Object {
+      // Ignored.
     }
   }
 

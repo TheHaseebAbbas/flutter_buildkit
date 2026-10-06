@@ -199,7 +199,8 @@ String? _fastlaneJsonKey(FlutterProject project) {
 }
 
 /// Entries that should be in `.gitignore` but are not: the build output
-/// folder and the config file (it can hold secrets).
+/// folder and the personal config overlay (`flutter_buildkit.local.yaml`).
+/// The main config is meant to be committed.
 List<String> missingGitignoreEntries(FlutterProject project,
     {required String outputDir, required String configFileName}) {
   final f = File(p.join(project.dir, '.gitignore'));

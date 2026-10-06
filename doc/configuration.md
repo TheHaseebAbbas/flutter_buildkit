@@ -6,8 +6,12 @@ line options win for their own settings.
 
 * **Config file:** `flutter_buildkit.yaml` in the Flutter project root (or
   `-c <file>`). Create a commented starter with
-  `dart run flutter_buildkit init`. Keep it out of git if it holds anything
-  private.
+  `dart run flutter_buildkit init`. Commit it: flavors, layout, entry points
+  and track defaults are project knowledge the whole team shares.
+* **Personal overlay:** `flutter_buildkit.local.yaml` next to it, with the
+  same keys, wins over the shared file (maps are merged key by key, lists
+  are replaced). Put secrets and machine paths there (for example
+  `play.service_account_json`) and add it to `.gitignore`.
 * **See what is in effect:** `dart run flutter_buildkit config` prints every
   setting (secrets masked).
 * Everything is optional. With no config file the app works with defaults,
@@ -55,7 +59,7 @@ line options win for their own settings.
 |---|---|
 | `PLAY_SERVICE_ACCOUNT_JSON` | `play.service_account_json` |
 | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_URL` | the `sentry.*` settings |
-| `FBK_FLUTTER` | `flutter` |
+| `FBK_FLUTTER` | `flutter` (quote a path with spaces: `"C:\Program Files\flutter\bin\flutter.bat"`; or use a list in the YAML: `[fvm, flutter]`) |
 | `FBK_RETRACE`, `FBK_NDK_STACK` | `android.retrace`, `android.ndk_stack` |
 | `ANDROID_HOME`, `ANDROID_NDK_HOME` | where to look for `retrace` and `ndk-stack` |
 | `FBK_UI` | `--ui` |

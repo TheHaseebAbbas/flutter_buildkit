@@ -57,7 +57,7 @@ class Console {
         interactive = interactive ??
             (readLine == null && write == null && _wantsKeys(mode));
 
-  /// Set by the entry point after [WindowsConsole.enable] succeeds.
+  /// Set by the entry point after `WindowsConsole.enable` succeeds.
   static bool windowsKeysReady = false;
 
   static bool _wantsKeys(UiMode mode) {

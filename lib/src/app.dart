@@ -13,6 +13,7 @@ import 'services/build_manager.dart';
 import 'services/flutter_builder.dart';
 import 'services/play_publisher.dart';
 import 'services/pre_build.dart';
+import 'services/process_runner.dart';
 import 'services/symbol_uploader.dart';
 import 'services/symbolicator.dart';
 import 'ui/console.dart';
@@ -274,6 +275,12 @@ class App {
     final code =
         await console.askInt('Version code', defaultValue: current.code);
     if (code == null) return;
+    final highest = ledger.highestVersionCode(project.appName);
+    if (highest != null && code <= highest) {
+      console.warn('Version code $code is not higher than $highest, which the '
+          'ledger already has for ${project.appName}. Google Play rejects a '
+          'version code it has seen.');
+    }
 
     // Pre-build steps.
     final available = availablePreBuildSteps(project);
@@ -325,9 +332,8 @@ class App {
             ? '-'
             : config.extraBuildArgs.join(' '));
     if (extraText == null) return;
-    final extraBuildArgs = extraText == '-'
-        ? <String>[]
-        : extraText.split(RegExp(r'\s+')).where((a) => a.isNotEmpty).toList();
+    final extraBuildArgs =
+        extraText == '-' ? <String>[] : splitCommandLine(extraText);
 
     final requests = <BuildRequest>[
       for (final flavor in chosenFlavors)
@@ -714,8 +720,18 @@ class App {
         } else if (!await console.confirm('Upload?', defaultValue: true)) {
           return;
         }
-        await publisher.publish(r,
-            track: track, releaseStatus: releaseStatus, releaseNotes: notes);
+        try {
+          await publisher.publish(r,
+              track: track, releaseStatus: releaseStatus, releaseNotes: notes);
+        } on PlayTrackInUseException catch (e) {
+          console.warn('$e');
+          if (!await console.confirm('Replace it anyway?')) return;
+          await publisher.publish(r,
+              track: track,
+              releaseStatus: releaseStatus,
+              releaseNotes: notes,
+              replaceExisting: true);
+        }
         console.success(
             'Uploaded to the $track track and recorded in the ledger.');
         return;

@@ -539,11 +539,13 @@ class SettingsScreen {
   Future<void> _offerGitignore() async {
     final missing = missingGitignoreEntries(project,
         outputDir: _build(editor).outputDir,
-        configFileName: p.basename(savePath));
+        configFileName:
+            '${p.basenameWithoutExtension(savePath)}.local${p.extension(savePath)}');
     if (missing.isEmpty) return;
     if (await console.confirm(
-        'Add ${missing.join(', ')} to .gitignore? (builds are large, the '
-        'config can hold secrets)',
+        'Add ${missing.join(', ')} to .gitignore? (builds are large; the '
+        '.local file is for secrets and machine paths, commit the main '
+        'config)',
         defaultValue: true)) {
       addToGitignore(project, missing);
       console.success('.gitignore updated');
