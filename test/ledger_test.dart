@@ -136,10 +136,23 @@ void main() {
 
     test('TSV escapes tabs and newlines so each build stays on one line', () {
       final r = record('a').copyWith(notes: 'a\tb\nc');
-      final lines = exporter.toTsv([r]).trimRight().split('\n');
+      final lines = exporter.toTsv([r]).split('\n');
+      expect(lines.removeLast(), isEmpty);
       expect(lines, hasLength(2));
       expect(lines[1], contains(r'a\tb\nc'));
       expect(lines[1].split('\t').length, LedgerExporter.columns.length);
+    });
+
+    test('cells that start like a formula are kept as text in CSV and TSV', () {
+      for (final text in ['=1+1', '+SUM(A1)', '-2', '@cmd', '\tx']) {
+        final r = record('a').copyWith(notes: text);
+        final notes = LedgerExporter.columns.indexOf('notes');
+        expect(exporter.row(r)[notes], text, reason: 'row() is unchanged');
+        expect(exporter.toCsv([r]), contains("'$text"));
+        expect(exporter.toTsv([r]), contains("'"));
+      }
+      expect(exporter.toJson([record('a').copyWith(notes: '=1+1')]),
+          contains('"=1+1"'));
     });
 
     test('empty flavor and status columns are blank, not "null"', () {
@@ -161,6 +174,8 @@ void main() {
       await Directory(p.join(dir.path, 'symbols', 'dart'))
           .create(recursive: true);
       await File(p.join(dir.path, 'a.aab')).writeAsString('x');
+      await File(p.join(dir.path, 'build_info.json'))
+          .writeAsString(jsonEncode({'id': id}));
       await File(p.join(dir.path, 'symbols', 'dart', 'app.symbols'))
           .writeAsString('sym');
       return dir;
@@ -179,6 +194,123 @@ void main() {
       expect(Directory(p.join(ledger.rootDir, 'my_app')).existsSync(), isFalse);
       expect(Directory(ledger.rootDir).existsSync(), isTrue);
       expect(ledger.records, isEmpty);
+    });
+
+    group('refuses unsafe paths', () {
+      Future<DeleteResult> run(BuildRecord r, {bool dryRun = false}) =>
+          BuildManager(ledger).delete([r], dryRun: dryRun);
+
+      test('a folder outside the ledger root', () async {
+        final outside = Directory(p.join(tmp.path, 'elsewhere'))..createSync();
+        File(p.join(outside.path, 'keep.txt')).writeAsStringSync('x');
+        final r = record('a', outputDir: '../../elsewhere');
+        await ledger.add(r);
+
+        final result = await run(r);
+
+        expect(result.failed, hasLength(1));
+        expect(File(p.join(outside.path, 'keep.txt')).existsSync(), isTrue);
+        expect(ledger.byId('a'), isNotNull);
+      });
+
+      test('the ledger root itself, as "." or empty', () async {
+        Directory(ledger.rootDir).createSync(recursive: true);
+        File(p.join(ledger.rootDir, 'keep.txt')).writeAsStringSync('x');
+        for (final dir in ['.', '', './']) {
+          final r = record('a', outputDir: dir);
+          await ledger.add(r);
+          final result = await run(r);
+          expect(result.failed, hasLength(1), reason: 'outputDir "$dir"');
+          await ledger.remove(['a']);
+        }
+        expect(File(p.join(ledger.rootDir, 'keep.txt')).existsSync(), isTrue);
+      });
+
+      test('a symlink that leads out of the root', () async {
+        final outside = Directory(p.join(tmp.path, 'precious'))..createSync();
+        File(p.join(outside.path, 'build_info.json'))
+            .writeAsStringSync(jsonEncode({'id': 'a'}));
+        File(p.join(outside.path, 'keep.txt')).writeAsStringSync('x');
+        Link(p.join(ledger.rootDir, 'link'))
+            .createSync(outside.path, recursive: true);
+        final r = record('a', outputDir: 'link');
+        await ledger.add(r);
+
+        final result = await run(r);
+
+        expect(result.failed, hasLength(1));
+        expect(File(p.join(outside.path, 'keep.txt')).existsSync(), isTrue);
+        expect(ledger.byId('a'), isNotNull);
+      }, skip: Platform.isWindows ? 'symlinks need admin rights' : null);
+
+      test('a folder without build_info.json', () async {
+        final dir = Directory(p.join(ledger.rootDir, 'notes'))
+          ..createSync(recursive: true);
+        File(p.join(dir.path, 'todo.txt')).writeAsStringSync('x');
+        final r = record('a', outputDir: 'notes');
+        await ledger.add(r);
+
+        final result = await run(r);
+
+        expect(result.failed, hasLength(1));
+        expect(File(p.join(dir.path, 'todo.txt')).existsSync(), isTrue);
+      });
+
+      test('a build_info.json that belongs to another build', () async {
+        final dir = await makeBuild('other', 'my_app/v1');
+        final r = record('a', outputDir: 'my_app/v1');
+        await ledger.add(r);
+
+        final result = await run(r);
+
+        expect(result.failed, hasLength(1));
+        expect(dir.existsSync(), isTrue);
+      });
+
+      test('a folder that contains another build', () async {
+        await makeBuild('a', 'my_app');
+        await makeBuild('b', 'my_app/v2');
+        final a = record('a', outputDir: 'my_app');
+        await ledger.add(a);
+        await ledger.add(record('b', outputDir: 'my_app/v2'));
+
+        final result = await run(a);
+
+        expect(result.failed, hasLength(1));
+        expect(Directory(p.join(ledger.rootDir, 'my_app', 'v2')).existsSync(),
+            isTrue);
+      });
+
+      test('a released build whose artifact path leaves the root', () async {
+        await makeBuild('a', 'my_app/v1');
+        final outsideFile = File(p.join(tmp.path, 'outside.aab'))
+          ..writeAsStringSync('x');
+        final r = BuildRecord.fromJson({
+          ...record('a', outputDir: 'my_app/v1').toJson(),
+          'artifacts': [
+            {'path': '../../outside.aab', 'sizeBytes': 1, 'sha256': 'x'}
+          ],
+        }).copyWith(publishedAt: DateTime.utc(2026, 10, 2));
+        await ledger.add(r);
+
+        final result = await run(r);
+
+        expect(result.failed, hasLength(1));
+        expect(outsideFile.existsSync(), isTrue);
+      });
+
+      test('--dry-run changes nothing', () async {
+        final dir = await makeBuild('a', 'my_app/v1');
+        final r = record('a', outputDir: 'my_app/v1');
+        await ledger.add(r);
+
+        final result = await run(r, dryRun: true);
+
+        expect(result.dryRun, isTrue);
+        expect(result.deleted, hasLength(1));
+        expect(dir.existsSync(), isTrue);
+        expect(ledger.byId('a'), isNotNull);
+      });
     });
 
     test('keeps sibling builds and their parents', () async {

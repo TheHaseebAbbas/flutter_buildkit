@@ -19,7 +19,9 @@ class FakeFlutter extends ProcessRunner {
 
   @override
   Future<int> stream(List<String> command,
-      {String? workingDirectory, Map<String, String>? environment}) async {
+      {String? workingDirectory,
+      Map<String, String>? environment,
+      String? logFile}) async {
     commands.add(command);
     if (command.contains('build') && exitCode == 0) {
       final symbols = command
@@ -109,15 +111,61 @@ void main() {
     expect(ledger.records, hasLength(1));
   });
 
-  test('a failed build leaves no folder and no ledger row', () async {
+  test('a failed build is recorded as failed and keeps its log', () async {
     final builder = FlutterBuilder(
         project: project,
         config: config,
         ledger: ledger,
         runner: FakeFlutter(tmp.path, exitCode: 1));
+    await expectLater(
+        builder.build(request),
+        throwsA(isA<BuildException>()
+            .having((e) => e.message, 'message', contains('build.log'))));
+
+    final row = ledger.records.single;
+    expect(row.status, BuildStatus.failed);
+    expect(row.failure!.exitCode, 1);
+    expect(row.artifacts, isEmpty);
+    expect(row.command, contains('build appbundle'));
+    final dir = ledger.resolve(row.outputDir);
+    expect(File(p.join(dir, 'build.log')).readAsStringSync(),
+        startsWith('\$ flutter build appbundle'));
+    expect(File(p.join(dir, 'build_info.json')).existsSync(), isTrue);
+    expect(row.events.single.kind, 'build_failed');
+
+    final reopened = await Ledger.open(ledger.file.path);
+    expect(reopened.records.single.toJson(), row.toJson());
+  });
+
+  test('a failed build can be deleted again', () async {
+    final builder = FlutterBuilder(
+        project: project,
+        config: config,
+        ledger: ledger,
+        runner: FakeFlutter(tmp.path, exitCode: 2));
     await expectLater(builder.build(request), throwsA(isA<BuildException>()));
+    final row = ledger.records.single;
+
+    final result = await BuildManager(ledger).delete([row]);
+
+    expect(result.deleted, hasLength(1));
     expect(ledger.records, isEmpty);
-    expect(Directory(p.join(config.outputRoot, 'demo')).existsSync(), isFalse);
+    expect(Directory(ledger.resolve(row.outputDir)).existsSync(), isFalse);
+  });
+
+  test('a successful build keeps build.log and records the command', () async {
+    final builder = FlutterBuilder(
+        project: project,
+        config: config,
+        ledger: ledger,
+        runner: FakeFlutter(tmp.path));
+    final record = await builder.build(request);
+    expect(
+        File(p.join(ledger.resolve(record.outputDir), 'build.log'))
+            .existsSync(),
+        isTrue);
+    expect(record.command, contains('--flavor dev'));
+    expect(record.status, BuildStatus.built);
   });
 
   test('outputs left over from an earlier build are not picked up', () async {

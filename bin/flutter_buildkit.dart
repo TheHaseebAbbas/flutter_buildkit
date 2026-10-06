@@ -73,6 +73,7 @@ Future<int> _main(List<String> arguments) async {
     } on Object {
       // Best effort while exiting.
     }
+    InterruptGuard.interrupt();
     windows.restore();
     exit(130);
   });

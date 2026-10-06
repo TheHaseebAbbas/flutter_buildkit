@@ -60,6 +60,10 @@ class LedgerExporter {
     'flutter_version',
     'duration_ms',
     'notes',
+    'target',
+    'command',
+    'failure_exit_code',
+    'play_edit_id',
   ];
 
   /// Renders [records] in the given [format].
@@ -135,17 +139,28 @@ class LedgerExporter {
       r.flutterVersion ?? '',
       r.durationMs?.toString() ?? '',
       r.notes ?? '',
+      r.target ?? '',
+      r.command ?? '',
+      r.failure?.exitCode.toString() ?? '',
+      r.play?.editId ?? '',
     ];
   }
 
-  static String _csvField(String value) {
+  /// Spreadsheets run a cell that starts with `=`, `+`, `-`, `@`, a tab or a
+  /// carriage return as a formula. A leading `'` keeps it text. JSON is not
+  /// changed.
+  static String _neutralize(String value) =>
+      value.isNotEmpty && '=+-@\t\r'.contains(value[0]) ? "'$value" : value;
+
+  static String _csvField(String raw) {
+    final value = _neutralize(raw);
     final needsQuotes = value.contains(RegExp('[",\r\n]')) ||
         value.startsWith(' ') ||
         value.endsWith(' ');
     return needsQuotes ? '"${value.replaceAll('"', '""')}"' : value;
   }
 
-  static String _tsvField(String value) => value
+  static String _tsvField(String raw) => _neutralize(raw)
       .replaceAll(r'\', r'\\')
       .replaceAll('\t', r'\t')
       .replaceAll('\r', r'\r')

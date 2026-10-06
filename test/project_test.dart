@@ -1,4 +1,5 @@
 import 'package:flutter_buildkit/flutter_buildkit.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 import 'package:yaml/yaml.dart';
 
@@ -111,8 +112,30 @@ android {
 
     test('defaults: app_builds/ledger.json inside the project', () {
       final c = AppConfig.fromYaml('/proj', const {});
-      expect(c.ledgerPath, '/proj/app_builds/ledger.json');
+      expect(p.normalize(c.ledgerPath),
+          p.normalize(p.join('/proj', 'app_builds', 'ledger.json')));
       expect(c.flutter, ['flutter']);
+    });
+
+    test('a Play upload is a draft unless the config says otherwise', () {
+      expect(AppConfig.fromYaml('/p', const {}).play.defaultReleaseStatus,
+          'draft');
+      final doc = loadYaml(AppConfig.template) as Map;
+      expect(AppConfig.fromYaml('/p', doc.cast()).play.defaultReleaseStatus,
+          'draft');
+      final c = AppConfig.fromYaml('/p', {
+        'play': {'default_release_status': 'completed'}
+      });
+      expect(c.play.defaultReleaseStatus, 'completed');
+    });
+
+    test('describe() does not reveal any part of a secret', () {
+      final c = AppConfig.fromYaml('/p', {
+        'sentry': {'auth_token': 'sntrys_abcdef123456'}
+      });
+      final text = c.describe();
+      expect(text, matches(RegExp(r'sentry\.auth_token\s+set \(19 chars\)')));
+      expect(text, isNot(contains('sntr')));
     });
 
     test('the init template is valid config', () {

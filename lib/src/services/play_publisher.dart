@@ -52,6 +52,9 @@ class PlayPublisher {
       throw PlayException('Only AAB builds can be uploaded to Google Play '
           '(this build is ${record.type.name}).');
     }
+    if (record.isFailed || record.artifacts.isEmpty) {
+      throw PlayException('This build has no files to upload.');
+    }
     if (record.mode != BuildMode.release) {
       throw PlayException('Google Play rejects debuggable builds; this build '
           'is ${record.mode.name}. Build with --release.');
