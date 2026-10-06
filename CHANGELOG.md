@@ -31,6 +31,27 @@ Safety release. Behavior changes are marked **Changed**.
 - The menu warns when a delete removes the symbols of a build that was once
   published and then unmarked.
 
+Command line and CI:
+
+- New non-interactive commands: `build`, `publish`, `mark`, `symbols`,
+  `trace` and `delete` (with `--dry-run`/`--yes`). They never prompt, accept
+  `--json` and return stable exit codes (`ExitCodes`): 69 upload failed, 70
+  build failed, 71 trace failed, 72 delete failed. The same code is available
+  as `Cli` in the library. See `doc/ci.md`.
+- `list` and `export` gained `--flavor`, `--status`, `--since` and `--limit`;
+  `list --json` prints the rows; the table has a Status column.
+- `list`, `export`, `mark` and `delete` work outside a Flutter project when
+  `--ledger` is given. `export` creates missing parent folders.
+- **Changed:** `init` exits 73 (was 1) when the config file exists.
+- Output files are found without clocks: the output folders are snapshotted
+  before `flutter build`, the `Built <path>` lines Flutter prints are used
+  first, and otherwise the files that are new or changed are taken. A flavor
+  must match a whole part of the file name (`pro` no longer matches
+  `app-production-release.apk`). When several candidates are left and the
+  build is not split per ABI the build fails with the list instead of guessing.
+- GitHub Actions workflow: format, analyze and tests on Linux, macOS and
+  Windows, plus a `pub publish --dry-run`.
+
 ## 0.1.2
 
 - Added an `example/` folder with runnable examples by topic (library API,

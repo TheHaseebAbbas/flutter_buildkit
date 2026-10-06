@@ -25,4 +25,21 @@ void main() {
     File(p.join(tmp.path, 'pubspec.yaml')).deleteSync();
     expect(await run(['list']), 66);
   });
+
+  test('init over an existing config exits 73', () async {
+    expect(await run(['init']), 0);
+    expect(await run(['init']), 73);
+  });
+
+  test('delete without --yes exits 64', () async {
+    expect(await run(['delete', 'abc']), 64);
+  });
+
+  test('list works with only --ledger outside a project', () async {
+    File(p.join(tmp.path, 'pubspec.yaml')).deleteSync();
+    final ledger = p.join(tmp.path, 'l.json');
+    expect(await run(['--ledger', ledger, 'list']), 0);
+    expect(await run(['--ledger', ledger, 'delete', 'x', '--dry-run']), 64);
+    expect(await run(['build']), 66);
+  });
 }

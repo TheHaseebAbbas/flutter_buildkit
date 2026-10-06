@@ -202,6 +202,7 @@ class FlutterBuilder {
     final logFile = p.join(outDir, buildLogName);
     await File(logFile).writeAsString('\$ $commandLine\n');
     final flutterVersion = await _flutterVersion();
+    final before = _snapshot(request.type);
     final int exitCode;
     try {
       exitCode = await runner.stream(command,
@@ -224,12 +225,17 @@ class FlutterBuilder {
           exitCode, 'flutter build failed with exit code $exitCode.'));
     }
 
-    final outputs = _findOutputs(request, since: started);
+    final List<File> outputs;
+    try {
+      outputs = _findOutputs(request, before: before, logFile: logFile);
+    } on BuildException catch (e) {
+      await fail(BuildFailure(0, e.message));
+    }
     if (outputs.isEmpty) {
       await fail(BuildFailure(
           0,
-          'flutter build succeeded but no .${request.type.extension} newer '
-          'than the build start was found under '
+          'flutter build succeeded but no new or changed '
+          '.${request.type.extension} was found under '
           '${p.join(project.dir, 'build')}.'));
     }
 
@@ -336,36 +342,95 @@ class FlutterBuilder {
     await ledger.add(record);
   }
 
-  List<File> _findOutputs(BuildRequest r, {required DateTime since}) {
+  List<String> _outputDirs(ArtifactType type) {
     final base = p.join(project.dir, 'build');
-    final dirs = switch (r.type) {
+    return switch (type) {
       ArtifactType.apk => [p.join(base, 'app', 'outputs', 'flutter-apk')],
       ArtifactType.aab => [p.join(base, 'app', 'outputs', 'bundle')],
       ArtifactType.ipa => [p.join(base, 'ios', 'ipa')],
     };
-    final cutoff = _wholeSecond(since);
-    final found = <File>[];
-    for (final d in dirs.map(Directory.new)) {
+  }
+
+  /// Path, modification time and size of every output-type file now in the
+  /// build output folders. Taken before `flutter build`, so afterwards the
+  /// files this build wrote can be told from older ones by what changed, not
+  /// by comparing clocks.
+  Map<String, (int, int)> _snapshot(ArtifactType type) {
+    final result = <String, (int, int)>{};
+    for (final d in _outputDirs(type).map(Directory.new)) {
       if (!d.existsSync()) continue;
       for (final f in d.listSync(recursive: true).whereType<File>()) {
-        if (p.extension(f.path) != '.${r.type.extension}') continue;
-        if (f.lastModifiedSync().isBefore(cutoff)) continue;
+        if (p.extension(f.path) != '.${type.extension}') continue;
+        final stat = f.statSync();
+        result[p.normalize(f.path)] =
+            (stat.modified.millisecondsSinceEpoch, stat.size);
+      }
+    }
+    return result;
+  }
+
+  /// The files this build produced.
+  ///
+  /// First choice is what Flutter itself reported (`Built <path>` lines in
+  /// [logFile]). Otherwise the files that are new or changed since [before]
+  /// are used, narrowed to the requested flavor by matching whole name parts
+  /// (`dev` matches `app-dev-release.apk`, not `app-device-release.apk`).
+  /// Throws [BuildException] when more than one candidate is left and the
+  /// build was not split per ABI, instead of guessing.
+  List<File> _findOutputs(BuildRequest r,
+      {required Map<String, (int, int)> before, String? logFile}) {
+    final ext = '.${r.type.extension}';
+    final reported = <File>[];
+    if (logFile != null && File(logFile).existsSync()) {
+      final built = RegExp(r'Built\s+(\S.*?\.' + r.type.extension + r')\b');
+      for (final line in File(logFile).readAsLinesSync()) {
+        final m = built.firstMatch(line);
+        if (m == null) continue;
+        final file = File(p.normalize(p.absolute(project.dir, m.group(1))));
+        if (file.existsSync() && !reported.any((f) => f.path == file.path)) {
+          reported.add(file);
+        }
+      }
+    }
+    if (reported.isNotEmpty) return reported;
+
+    final found = <File>[];
+    for (final d in _outputDirs(r.type).map(Directory.new)) {
+      if (!d.existsSync()) continue;
+      for (final f in d.listSync(recursive: true).whereType<File>()) {
+        if (p.extension(f.path) != ext) continue;
+        final stat = f.statSync();
+        final old = before[p.normalize(f.path)];
+        if (old != null &&
+            old.$1 == stat.modified.millisecondsSinceEpoch &&
+            old.$2 == stat.size) {
+          continue;
+        }
         // flutter build apk also refreshes app.apk as a copy of the last
         // variant; skip it when the variant-named file is there too.
         if (p.basename(f.path) == 'app.apk' && r.flavor != null) continue;
         found.add(f);
       }
     }
+    var candidates = found;
     if (r.flavor != null) {
+      final flavor = r.flavor!.toLowerCase();
       final matching = found
           .where((f) => p
-              .basename(f.path)
+              .basenameWithoutExtension(f.path)
               .toLowerCase()
-              .contains(r.flavor!.toLowerCase()))
+              .split(RegExp(r'[-_.]'))
+              .contains(flavor))
           .toList();
-      if (matching.isNotEmpty) return matching;
+      if (matching.isNotEmpty) candidates = matching;
     }
-    return found;
+    if (candidates.length > 1 &&
+        !(r.splitPerAbi && r.type == ArtifactType.apk)) {
+      throw BuildException('flutter build succeeded but more than one '
+          '$ext file is new, so the right one is unclear: '
+          '${candidates.map((f) => p.basename(f.path)).join(', ')}.');
+    }
+    return candidates;
   }
 
   /// [t] cut to whole seconds, so file systems with 1 s timestamps still see

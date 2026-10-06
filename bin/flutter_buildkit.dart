@@ -16,8 +16,20 @@ Commands:
   vscode   Add run configurations to .vscode/launch.json.
   settings Edit flutter_buildkit.yaml interactively, with previews.
   config   Show the settings in effect (secrets masked).
-  list     Print the ledger as a table.
+  list     Print the ledger as a table (--flavor, --status, --since, --limit, --json).
   export   Write the ledger as csv, tsv or json: export <format> [file]
+
+Commands for scripts and CI (no prompts; see "Exit codes"):
+  build    Build: --flavor dev,prod --type aab --mode release [--version-name 1.2.0 --build-number 42]
+  publish  Upload an AAB to Google Play: publish <id|latest> --track internal [--release-status draft]
+  mark     Mark builds as published: mark <id...> [--clear]
+  symbols  Upload debug symbols: symbols <id|latest> --to crashlytics,sentry
+  trace    De-obfuscate a crash: trace <id|latest> [--file crash.txt]
+  delete   Delete builds: delete <id...> --dry-run | --yes
+
+Exit codes: 0 ok, 64 usage, 66 no project, 69 upload failed, 70 build failed,
+71 trace failed, 72 delete failed, 73 file exists, 74 ledger, 78 config,
+130 interrupted.
 
 Options:
 ''';
@@ -45,13 +57,14 @@ Future<int> _main(List<String> arguments) async {
       'plain': 'always numbered questions: type 2, or 1,3 for several',
     })
     ..addFlag('help', abbr: 'h', negatable: false);
+  addCommandOptions(parser);
 
   final ArgResults args;
   try {
     args = parser.parse(arguments);
   } on FormatException catch (e) {
     stderr.writeln('${e.message}\n\n$_usage${parser.usage}');
-    return 64;
+    return ExitCodes.usage;
   }
   if (args['help'] as bool) {
     stdout.writeln('$_usage${parser.usage}');
@@ -75,7 +88,7 @@ Future<int> _main(List<String> arguments) async {
     }
     InterruptGuard.interrupt();
     windows.restore();
-    exit(130);
+    exit(ExitCodes.interrupted);
   });
   try {
     return await _run(args, parser);
@@ -94,7 +107,7 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
     final target = File(p.join(projectDir, AppConfig.fileNames.first));
     if (target.existsSync()) {
       stderr.writeln('${target.path} already exists.');
-      return 1;
+      return ExitCodes.cantCreate;
     }
     target.writeAsStringSync(AppConfig.template);
     stdout.writeln(
@@ -103,9 +116,21 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
   }
 
   if (!project.isFlutterProject) {
+    // list, export, mark and delete only need the ledger.
+    const ledgerOnly = {'list', 'export', 'mark', 'delete'};
+    if (ledgerOnly.contains(command) && args['ledger'] != null) {
+      try {
+        final ledger = await Ledger.open(p.absolute(args['ledger'] as String));
+        return await Cli(ledger: ledger).run(command!, args);
+      } on LedgerException catch (e) {
+        stderr.writeln('$e');
+        return ExitCodes.ledger;
+      }
+    }
     stderr.writeln('No pubspec.yaml in $projectDir. Run this from a Flutter '
-        'project or pass --project.');
-    return 66;
+        'project or pass --project (list, export, mark and delete also work '
+        'with just --ledger).');
+    return ExitCodes.noProject;
   }
 
   try {
@@ -159,62 +184,33 @@ Future<int> _run(ArgResults args, ArgParser parser) async {
             .editSettings();
       case 'config':
         stdout.writeln(config.describe());
-      case 'list':
-        final records = ledger.records;
-        stdout.writeln(records.isEmpty
-            ? 'The ledger is empty.'
-            : renderTable([
-                'ID',
-                'Created',
-                'Flavor',
-                'Mode',
-                'Type',
-                'Version',
-                'Size'
-              ], [
-                for (final r in records)
-                  [
-                    r.id,
-                    r.createdAt.toLocal().toIso8601String().substring(0, 16),
-                    r.flavorLabel,
-                    r.mode.name,
-                    r.type.name,
-                    r.version,
-                    formatBytes(r.totalSize),
-                  ]
-              ]));
-      case 'export':
-        if (args.rest.length < 2) {
-          stderr.writeln('Usage: export <csv|tsv|json> [file]');
-          return 64;
-        }
-        final format = ExportFormat.values
-            .where((f) => f.extension == args.rest[1].toLowerCase())
-            .firstOrNull;
-        if (format == null) {
-          stderr.writeln(
-              'Unknown format "${args.rest[1]}". Use csv, tsv or json.');
-          return 64;
-        }
-        final text = const LedgerExporter().export(ledger.records, format);
-        if (args.rest.length > 2) {
-          await File(args.rest[2]).writeAsString(text);
-        } else {
-          stdout.write(text);
-        }
+      case 'build' ||
+            'publish' ||
+            'mark' ||
+            'symbols' ||
+            'trace' ||
+            'delete' ||
+            'list' ||
+            'export':
+        return await Cli(
+                ledger: ledger,
+                project: project,
+                config: config,
+                runner: ProcessRunner(outputToStderr: args['json'] as bool))
+            .run(command, args);
       default:
         stderr.writeln('Unknown command "$command".\n\n$_usage${parser.usage}');
-        return 64;
+        return ExitCodes.usage;
     }
     return 0;
   } on ConsoleAbort {
     stdout.writeln('\nAborted.');
-    return 130;
+    return ExitCodes.interrupted;
   } on ConfigException catch (e) {
     stderr.writeln('Config error: $e');
-    return 78;
+    return ExitCodes.config;
   } on LedgerException catch (e) {
     stderr.writeln('$e');
-    return 74;
+    return ExitCodes.ledger;
   }
 }
