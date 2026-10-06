@@ -30,6 +30,7 @@
 library;
 
 export 'src/app.dart';
+export 'src/cli.dart';
 export 'src/build_paths.dart';
 export 'src/config.dart';
 export 'src/flutter_project.dart';

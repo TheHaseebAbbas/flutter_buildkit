@@ -2,8 +2,12 @@ import 'dart:io';
 
 /// Runs external tools (flutter, firebase, sentry-cli). Swappable in tests.
 class ProcessRunner {
-  /// Creates a runner; it holds no state.
-  const ProcessRunner();
+  /// Creates a runner. With [outputToStderr] the output of streamed commands
+  /// goes to stderr, which keeps stdout clean for machine readable output.
+  const ProcessRunner({this.outputToStderr = false});
+
+  /// Whether streamed output goes to stderr instead of stdout.
+  final bool outputToStderr;
 
   /// Runs [command] and returns its exit code.
   ///
@@ -16,7 +20,7 @@ class ProcessRunner {
     Map<String, String>? environment,
     String? logFile,
   }) async {
-    if (logFile == null) {
+    if (logFile == null && !outputToStderr) {
       final process = await Process.start(
         command.first,
         command.sublist(1),
@@ -40,10 +44,11 @@ class ProcessRunner {
       runInShell: Platform.isWindows,
     );
     InterruptGuard._running.add(process);
-    final sink = File(logFile).openWrite(mode: FileMode.append);
+    final sink =
+        logFile == null ? null : File(logFile).openWrite(mode: FileMode.append);
     Future<void> pump(Stream<List<int>> from, IOSink to) => from.forEach((d) {
           to.add(d);
-          sink.add(d);
+          sink?.add(d);
         });
     try {
       final pumps = Future.wait(
@@ -53,7 +58,7 @@ class ProcessRunner {
       return code;
     } finally {
       InterruptGuard._running.remove(process);
-      await sink.close();
+      await sink?.close();
     }
   }
 

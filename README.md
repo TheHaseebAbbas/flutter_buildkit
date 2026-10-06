@@ -50,7 +50,10 @@ dart run flutter_buildkit        # open the menu
 
 Add `app_builds/` and `flutter_buildkit.yaml` to the project's `.gitignore`.
 Installed globally (`dart pub global activate flutter_buildkit`) it is on your
-`PATH` as `flutter_buildkit` and the short `fbk`.
+`PATH` as `flutter_buildkit` and the short `fbk`. Globally installed is the
+better choice for CI: it keeps `googleapis` out of your app's dependency
+graph. Inside a project the short name is not available; use
+`dart run flutter_buildkit` or `dart run flutter_buildkit:fbk`.
 
 Other commands:
 
@@ -61,8 +64,9 @@ Other commands:
 | `vscode` | Add a run configuration per flavor, entry point and mode to `.vscode/launch.json`. |
 | `settings` | Edit the config with live previews. |
 | `config` | Show the settings in effect (secrets masked). |
-| `list` | Print the ledger as a table. |
+| `list` | Print the ledger as a table (`--flavor`, `--status`, `--since`, `--limit`, `--json`). |
 | `export <csv\|tsv\|json> [file]` | Write the ledger in another format. |
+| `build`, `publish`, `mark`, `symbols`, `trace`, `delete` | The menu's actions without prompts, with exit codes and `--json`, for CI. See [Using it in CI](doc/ci.md). |
 
 Options: `-C <project dir>`, `-c <config file>`, `--ledger <file>`,
 `--ui auto|keys|plain`.
@@ -255,6 +259,7 @@ runner. Full steps, a run-everything script and troubleshooting are in the
 
 - [Configuration](doc/configuration.md): every key, environment variables, Google Play, symbols
 - [Project setup](doc/project-setup.md): entry points, auto-configuration, VS Code, settings editor
+- [Using it in CI](doc/ci.md): commands for scripts, exit codes, GitHub Actions
 - [Builds, folders and the ledger](doc/builds-and-ledger.md): layouts, status, delete rules, crash tracing
 - [API reference](https://pub.dev/documentation/flutter_buildkit/latest/)
 - [Changelog](CHANGELOG.md) and [issue tracker](https://github.com/TheHaseebAbbas/flutter_buildkit/issues)
@@ -265,8 +270,10 @@ To work on this repo, clone it and run `dart pub get`, then
 `dart run bin/flutter_buildkit.dart -C /path/to/flutter/project`.
 
 ```sh
-dart format . && dart analyze && dart test
+dart format . && dart analyze --fatal-infos && dart test
 ```
+
+CI runs the same checks on Linux, macOS and Windows.
 
 The tests cover the ledger (persistence, atomic save, export, delete rules),
 the folder layout, Gradle flavor parsing, build arguments, config, pre-build
