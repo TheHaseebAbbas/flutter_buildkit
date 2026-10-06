@@ -110,8 +110,8 @@ void main() {
 
     test('layout preview keeps the app folder outside the project', () {
       final c = AppConfig.fromYaml('/proj', const {'output_dir': '/builds'});
-      expect(def('output_layout').preview(c, ctx).first,
-          startsWith(p.join('/builds', 'my_app')));
+      expect(p.normalize(def('output_layout').preview(c, ctx).first),
+          startsWith(p.normalize(p.join('/builds', 'my_app'))));
     });
 
     test('command preview follows obfuscate, split_per_abi and extra args', () {

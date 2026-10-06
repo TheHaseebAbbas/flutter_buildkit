@@ -113,7 +113,8 @@ android {
 
     test('defaults: app_builds/ledger.json inside the project', () {
       final c = AppConfig.fromYaml('/proj', const {});
-      expect(c.ledgerPath, '/proj/app_builds/ledger.json');
+      expect(p.normalize(c.ledgerPath),
+          p.normalize(p.join('/proj', 'app_builds', 'ledger.json')));
       expect(c.flutter, ['flutter']);
     });
 
