@@ -1,4 +1,4 @@
-## Unreleased
+## 0.2.1 - 2026-10-06
 
 - Menus no longer repeat their heading on every arrow key: list lines are cut
   to the terminal width so redraws stay in place.
